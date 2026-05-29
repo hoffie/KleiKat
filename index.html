@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KleiKat</title>
+<link rel="icon" type="image/png" href="/kleikat.png">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/qrcanvas.js"></script>
+</head>
+<body>
+<header>
+  <img src="/kleikat.png" alt="KleiKat" id="logo">
+  <span>KleiKat</span>
+</header>
+
+<main>
+  <div class="schema-tabs" id="schema-tabs"></div>
+  <div class="toolbar">
+    <input type="text" id="search" placeholder="&#x1F50D; Suche" autocomplete="off">
+    <button id="share-btn" title="Link teilen">&#x1F4CE;</button>
+    <button id="qr-btn" title="QR-Code drucken">&#x1F5A8;</button>
+  </div>
+
+  <div id="table-container">
+    <form id="entry-form">
+    <table id="table">
+      <thead id="table-head"></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+    </form>
+  </div>
+</main>
+
+<div id="autocomplete" class="dropdown"></div>
+<div id="filter-dropdown" class="dropdown"></div>
+
+<script>
+const state = {
+  schema: '',
+  search: '',
+  filters: {},
+  fullToken: '',
+  readOnlyToken: '',
+  canWrite: false,
+  schemas: null,
+};
+
+const API = '/api';
+const URL_FIELD_PREFIX = 'f.';
+const FILTER_SEP = '^';
+
+async function api(path, opts = {}) {
+  const headers = {};
+  headers['X-Token'] = state.fullToken;
+  let url = API + path;
+  if (opts.params) {
+    const urlObj = new URL(url, window.location.origin);
+    for (const [k, v] of Object.entries(opts.params)) {
+      if (v !== undefined && v !== '') urlObj.searchParams.set(k, v);
+    }
+    url = urlObj.toString();
+  }
+  const resp = await fetch(url, {
+    ...opts,
+    headers: { ...headers, ...opts.headers },
+  });
+  if (resp.status < 200 || resp.status > 299) {
+    let error = "";
+    try {
+      error = (await resp.json())['error'];
+    } catch { }
+    alert(`Serverfehler: ${resp.status} ${resp.statusText}: ${error}`);
+    return;
+  }
+  return resp.json();
+}
+
+function updateURL() {
+  const url = new URL(window.location);
+  url.searchParams.delete('t');
+  if (state.schema) url.searchParams.set('s', state.schema);
+  if (state.search) {
+    url.searchParams.set('q', state.search);
+  } else {
+    url.searchParams.delete('q');
+  }
+  for (const [k, v] of url.searchParams.entries()) {
+    // Remove all filters first:
+    if (k.indexOf('f.') === 0) {
+      url.searchParams.delete(k);
+    }
+  }
+  for (const [k, v] of Object.entries(state.filters)) {
+    if (v) {
+      url.searchParams.set(URL_FIELD_PREFIX + k, v);
+    }
+  }
+  history.replaceState(null, '', url);
+}
+
+function loadFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  state.schema = params.get('s') || '';
+  state.search = params.get('q') || '';
+  document.getElementById('search').value = state.search
+  state.filters = {};
+  for (const key of params.keys()) {
+    if (key.startsWith(URL_FIELD_PREFIX)) {
+      state.filters[key.slice(2)] = params.get(key);
+    }
+  }
+  // Token from URL or localStorage
+  function checkToken() {
+    const tokenParts = state.fullToken.split('.');
+    state.canWrite = tokenParts.length == 2;
+    state.readOnlyToken = tokenParts[0];
+  }
+  const storedToken = localStorage.getItem('kleikat_token');
+  if (storedToken) {
+    state.fullToken = storedToken;
+    checkToken();
+  }
+  const urlToken = params.get('t');
+  if (urlToken && urlToken != state.readOnlyToken) {
+    state.fullToken = urlToken;
+    checkToken();
+    localStorage.setItem('kleikat_token', state.fullToken);
+  }
+}
+
+async function loadSchemas() {
+  let schemas = {};
+  try {
+    schemas = await api('/schemas');
+    if (typeof schemas !== 'object' || schemas === null) schemas = {};
+  } catch { console.log("exception"); }
+  state.schemas = schemas;
+  const schemaNames = Object.keys(schemas);
+  for (const name of schemaNames) {
+    const schema = schemas[name];
+    schema.ordered_attribute_title_keys = [];
+    schema.attribute_titles_by_key = {};
+    schema.attribute_titles.forEach((el) => {
+      schema.ordered_attribute_title_keys.push(el[0]);
+      schema.attribute_titles_by_key[el[0]] = el.slice(1);
+    });
+  }
+
+  const tabContainer = document.getElementById('schema-tabs');
+  tabContainer.innerHTML = '';
+
+  for (const name of schemaNames) {
+    const schema = schemas[name];
+    const tab = document.createElement('div');
+    tab.className = 'schema-tab' + (name === state.schema ? ' active' : '');
+    tab.textContent = schema.title || name;
+    tab.dataset.schema = name;
+    tab.addEventListener('click', () => selectSchema(name));
+    tabContainer.appendChild(tab);
+  }
+
+  // Auto-select first schema if none selected
+  if (!state.schema && schemaNames.length > 0) {
+    selectSchema(schemaNames[0]);
+  }
+}
+
+function selectSchema(name) {
+  state.filters = {};
+  updateURL();
+  state.search = '';
+  state.schema = name;
+  document.getElementById('search').value = '';
+  localStorage.setItem('kleikat_schema', name);
+  updateURL();
+  renderTabs();
+  loadEntries();
+}
+
+function renderTabs() {
+  const tabs = document.querySelectorAll('.schema-tab');
+  for (const tab of tabs) {
+    tab.classList.toggle('active', tab.dataset.schema === state.schema);
+  }
+}
+
+async function loadEntries() {
+  if (!state.schema) return;
+  const params = { search: state.search };
+  for (const [k, v] of Object.entries(state.filters)) {
+    if (v) params[URL_FIELD_PREFIX + k] = v;
+  }
+  const entries = await api(`/schema/${state.schema}`, { params });
+  await renderTable(entries);
+}
+
+async function getDistinctValues(schema) {
+  try {
+    return await api(`/schema/${schema}/distincts`);
+  } catch { return []; }
+}
+
+async function getAutocomplete(schema, attr, fragment) {
+  if (!fragment) return [];
+  try {
+    return await api(`/schema/${schema}/autocomplete?attribute=${encodeURIComponent(attr)}&fragment=${encodeURIComponent(fragment)}`);
+  } catch { return []; }
+}
+
+function getAttrTitle(schema, attr) {
+  const schemaDetails = state.schemas?.[schema];
+  if (!schema) return attr;
+  const titles = schemaDetails.attribute_titles_by_key?.[attr];
+  if (Array.isArray(titles) && titles.length > 0) return titles[0];
+  return attr;
+}
+
+function getFilterLabel(schema, attr, value) {
+  const title = getAttrTitle(schema, attr);
+  return `${title}: ${value}`;
+}
+
+function buildFilterTags(attr) {
+  const filterValues = state.filters[attr] || '';
+  if (!filterValues) return '';
+  const tags = filterValues.split(FILTER_SEP).map(v => v.trim()).filter(Boolean);
+  return tags.map(v => `<span class="filter-tag" data-attr="${escHTML(attr)}" data-value="${escHTML(v)}">${escHTML(v)} <span class="filter-tag-remove">&#10005;</span></span>`).join(' ');
+}
+
+async function renderTable(entries) {
+  const schema = state.schemas?.[state.schema] || {};
+  const attrs = schema.attribute_titles_by_key || {};
+  const attrNames = schema.ordered_attribute_title_keys || {};
+
+  const form = document.getElementById('entry-form');
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const row = document.activeElement.parentElement.parentElement;
+    if (row.dataset.entryId) {
+      row.querySelector('.save-btn').click();
+      return;
+    }
+    return;
+  };
+
+  const table = document.createElement('table');
+  table.id = 'table';
+  table.innerHTML = `
+    <thead id="table-head"></thead>
+    <tbody id="table-body"></tbody>`;
+
+
+  // Header
+  const thead = table.querySelector('#table-head');
+  let headHTML = '<tr>';
+  for (const attr of attrNames) {
+    const title = attrs[attr][0] || attr;
+    const filterTags = buildFilterTags(attr);
+    headHTML += `<th class="filter-header" data-attr="${attr}">
+      <div class="filter-header-content">
+        <span class="filter-title">${escHTML(title)}
+          <span class="filter-arrow">&#x25BC;</span>
+        </span>
+        <span class="filter-tags">${filterTags}&nbsp;</span>
+      </div>
+    </th>`;
+  }
+  headHTML += '<th>&nbsp;</th></tr>';
+  thead.innerHTML = headHTML;
+
+  // Body
+  const tbody = table.querySelector('#table-body');
+  let bodyHTML = '';
+
+  // New entry row (first row)
+  if (state.canWrite) {
+    bodyHTML += '<tr class="new-entry">';
+    for (const attr of attrNames) {
+      const placeholder = attrs[attr][0] || attr;
+      bodyHTML += `<td><input type="text" class="entry-input" data-attr="${attr}" placeholder="${placeholder}"></td>`;
+    }
+    bodyHTML += '<td><button class="add-btn" title="Hinzufügen">&#10004;</button></td>';
+    bodyHTML += '</tr>';
+  }
+
+  // Data rows
+  for (const entry of entries) {
+    bodyHTML += `<tr data-entry-id="${entry.entry_id}">`;
+    for (const attr of attrNames) {
+      const val = entry.attrs[attr] || '';
+      bodyHTML += `<td><span class="cell-value">${escHTML(val)}</span></td>`;
+    }
+    bodyHTML += '<td>';
+    if (state.canWrite) {
+      bodyHTML += '<button class="edit-btn" title="Bearbeiten">&#9998;</button>';
+      bodyHTML += '<button class="delete-btn" title="Löschen">&#128465;</button>';
+    }
+    bodyHTML += '</td>';
+    bodyHTML += '</tr>';
+  }
+
+  tbody.innerHTML = bodyHTML;
+
+  // Attach new entry save
+  const addBtn = tbody.querySelector('.add-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', async () => {
+      const inputs = tbody.querySelectorAll('.new-entry .entry-input');
+      const attrs = {};
+      inputs.forEach(inp => { if (inp.value) attrs[inp.dataset.attr] = inp.value; });
+      if (Object.keys(attrs).length === 0) return;
+      await api(`/schema/${state.schema}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attrs }),
+      });
+      inputs.forEach(inp => inp.value = '');
+      loadEntries();
+    });
+  }
+
+  // Attach edit buttons
+  tbody.querySelectorAll('.edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('tr');
+      const eid = row.dataset.entryId;
+      const inputs = row.querySelectorAll('td:not(:last-child)');
+      inputs.forEach(td => {
+        const span = td.querySelector('.cell-value');
+        const thIdx = Array.from(td.parentElement.children).indexOf(td);
+        const attrName = attrNames[thIdx];
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'entry-input';
+        input.dataset.attr = attrName;
+        input.value = span.textContent;
+        span.replaceWith(input);
+        input.focus();
+        setupAutocomplete(input);
+      });
+      // Replace edit/delete with save/cancel
+      const actions = row.querySelector('td:last-child');
+      actions.innerHTML = `
+        <button class="save-btn" title="Speichern">&#10004;</button>
+        <button class="cancel-btn" title="Abbrechen">&#10005;</button>
+      `;
+      actions.querySelector('.save-btn').addEventListener('click', async () => {
+        const inputs2 = row.querySelectorAll('.entry-input');
+        const attrs2 = {};
+        inputs2.forEach(inp => { if (inp.value) attrs2[inp.dataset.attr] = inp.value; });
+        await api(`/schema/${state.schema}/${eid}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attrs: attrs2 }),
+        });
+        loadEntries();
+      });
+      actions.querySelector('.cancel-btn').addEventListener('click', () => loadEntries());
+    });
+  });
+
+  // Attach delete buttons
+  tbody.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('tr');
+      if (!confirm('Eintrag wirklich löschen?')) return;
+      const eid = row.dataset.entryId;
+      api(`/schema/${state.schema}/${eid}`, {
+        method: 'DELETE',
+      }).then(() => loadEntries());
+    });
+  });
+
+  document.getElementById('table').replaceWith(table);
+
+  // Load filter options (delayed)
+  getDistinctValues(state.schema).then(distincts => {
+    // Set up filter header click handlers
+    document.querySelectorAll('.filter-header').forEach(th => {
+      th.addEventListener('click', (e) => {
+        // Don't open dropdown if clicking on a filter tag remove button
+        if (e.target.closest('.filter-tag-remove')) return;
+        const attr = th.dataset.attr;
+        openFilterDropdown(attr, distincts, th);
+      });
+    });
+
+    // Set up filter tag remove handlers
+    document.querySelectorAll('.filter-tag-remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const attr = btn.parentElement.dataset.attr;
+        const value = btn.parentElement.dataset.value;
+        // Remove this value from the filter
+        const currentValues = (state.filters[attr] || '').split(FILTER_SEP).map(v => v.trim()).filter(Boolean);
+        const newValues = currentValues.filter(v => v !== value);
+        if (newValues.length === 0) {
+          delete state.filters[attr];
+        } else {
+          state.filters[attr] = newValues.join(FILTER_SEP);
+        }
+        updateURL();
+        loadEntries();
+      });
+    });
+  });
+
+  function applyFilterSelection(attr, dropdown) {
+    const checked = dropdown.querySelectorAll('.filter-options input[type="checkbox"]:checked');
+    const values = Array.from(checked).map(cb => cb.value);
+    if (values.length === 0) {
+      delete state.filters[attr];
+    } else {
+      state.filters[attr] = values.join(FILTER_SEP);
+    }
+    updateURL();
+    loadEntries();
+  }
+
+  function openFilterDropdown(attr, distincts, headerEl) {
+    // Close any open dropdown
+    closeFilterDropdown();
+
+    const dropdown = document.getElementById('filter-dropdown');
+    const allValues = distincts[attr] || [];
+    const currentValues = (state.filters[attr] || '').split(FILTER_SEP).map(v => v.trim()).filter(Boolean);
+
+    // Build dropdown content
+    let html = `<div class="filter-dropdown-header">
+      <span>Filter: ${escHTML(getAttrTitle(state.schema, attr))}</span>
+      <span class="filter-dropdown-close" data-attr="${escHTML(attr)}">&#10005;</span>
+    </div>`;
+    html += '<div class="filter-search-input"><input type="text" placeholder="Suchen..." class="filter-search"></div>';
+    html += '<div class="filter-options">';
+    for (const v of allValues) {
+      const checked = currentValues.includes(v) ? ' checked' : '';
+      html += `<label class="filter-option">
+        <input type="checkbox" value="${escHTML(v)}"${checked}>
+        <span class="filter-option-label">${escHTML(v)}</span>
+      </label>`;
+    }
+    html += '</div>';
+    html += '<div class="filter-dropdown-footer">';
+    html += `<button class="filter-apply" data-attr="${escHTML(attr)}">Anwenden</button>`;
+    html += `<button class="filter-clear" data-attr="${escHTML(attr)}">Löschen</button>`;
+    html += '</div>';
+    dropdown.innerHTML = html;
+
+    // Position dropdown
+    const rect = headerEl.getBoundingClientRect();
+    dropdown.style.top = (rect.bottom + 2) + 'px';
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.width = Math.max(rect.width, 200) + 'px';
+    dropdown.style.display = 'block';
+
+    // Focus search input
+    const searchInput = dropdown.querySelector('.filter-search');
+    if (searchInput) searchInput.focus();
+
+    // Search filtering
+    searchInput.addEventListener('input', () => {
+      const term = searchInput.value.toLowerCase();
+      dropdown.querySelectorAll('.filter-option').forEach(opt => {
+        const label = opt.querySelector('.filter-option-label').textContent.toLowerCase();
+        opt.style.display = label.includes(term) ? '' : 'none';
+      });
+    });
+
+    // Close button - auto-apply before closing
+    dropdown.querySelector('.filter-dropdown-close').addEventListener('click', () => {
+      applyFilterSelection(attr, dropdown);
+      closeFilterDropdown();
+    });
+
+    // Clear button
+    dropdown.querySelector('.filter-clear').addEventListener('click', () => {
+      delete state.filters[attr];
+      updateURL();
+      loadEntries();
+      closeFilterDropdown();
+    });
+
+    // Apply button
+    dropdown.querySelector('.filter-apply').addEventListener('click', () => {
+      applyFilterSelection(attr, dropdown);
+      closeFilterDropdown();
+    });
+
+    // Click outside to close - auto-apply
+    setTimeout(() => {
+      document.addEventListener('click', function handler(e) {
+        if (e.target.closest('.filter-header')) return;
+        if (!dropdown.contains(e.target) && e.target !== headerEl && !headerEl.contains(e.target)) {
+          applyFilterSelection(attr, dropdown);
+          closeFilterDropdown();
+          document.removeEventListener('click', handler);
+        }
+      });
+    }, 0);
+
+    // Escape key to close - auto-apply
+    document.addEventListener('keydown', function escHandler(e) {
+      if (e.key === 'Escape' && dropdown.style.display === 'block') {
+        applyFilterSelection(attr, dropdown);
+        closeFilterDropdown();
+        document.removeEventListener('keydown', escHandler);
+      }
+    });
+  }
+
+  function closeFilterDropdown() {
+    const dropdown = document.getElementById('filter-dropdown');
+    if (dropdown) {
+      dropdown.style.display = 'none';
+    }
+  }
+
+  // Autocomplete for new entry inputs
+  const autocompleteEl = document.getElementById('autocomplete');
+  let activeInput = null;
+  let activeSuggestions = [];
+  let highlightedIndex = -1;
+  let autocompleteTimer = null;
+
+  function showAutocomplete(input, suggestions) {
+    autocompleteEl.innerHTML = '';
+    activeSuggestions = suggestions || [];
+    highlightedIndex = -1;
+
+    if (!input.value || activeSuggestions.length === 0) {
+      autocompleteEl.style.display = 'none';
+      return;
+    }
+
+    const lowerFragment = input.value.toLowerCase();
+    for (let i = 0; i < activeSuggestions.length; i++) {
+      const s = activeSuggestions[i];
+      const div = document.createElement('div');
+      div.className = 'autocomplete-item' + (i === highlightedIndex ? ' highlighted' : '');
+      const idx = s.toLowerCase().indexOf(lowerFragment);
+      if (idx >= 0) {
+        div.innerHTML = escHTML(s.slice(0, idx)) + '<strong>' + escHTML(s.slice(idx, idx + input.value.length)) + '</strong>' + escHTML(s.slice(idx + input.value.length));
+      } else {
+        div.textContent = s;
+      }
+      div.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        input.value = s;
+        autocompleteEl.style.display = 'none';
+        activeInput = null;
+        activeSuggestions = [];
+        highlightedIndex = -1;
+      });
+      autocompleteEl.appendChild(div);
+    }
+    autocompleteEl.style.display = 'block';
+    positionDropdown(input, autocompleteEl);
+  }
+
+  function positionDropdown(inputEl, dropdownEl) {
+    const rect = inputEl.getBoundingClientRect();
+    dropdownEl.style.top = (rect.bottom + 2) + 'px';
+    dropdownEl.style.left = rect.left + 'px';
+    dropdownEl.style.width = rect.width + 'px';
+  }
+
+  function setupAutocomplete(input) {
+    input.addEventListener('input', async () => {
+      if (activeInput === input) {
+        clearTimeout(autocompleteTimer);
+      }
+      activeInput = input;
+      const fragment = input.value;
+      const attr = input.dataset.attr;
+
+      autocompleteTimer = setTimeout(async () => {
+        const suggestions = await getAutocomplete(state.schema, attr, fragment);
+        showAutocomplete(input, suggestions);
+      }, 200);
+    });
+
+    input.addEventListener('focus', () => {
+      if (!activeInput) activeInput = input;
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (autocompleteEl.style.display === 'block' && activeSuggestions.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          highlightedIndex = Math.min(highlightedIndex + 1, activeSuggestions.length - 1);
+          updateHighlight();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          highlightedIndex = Math.max(highlightedIndex - 1, 0);
+          updateHighlight();
+        } else if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          if (highlightedIndex >= 0 && highlightedIndex < activeSuggestions.length) {
+            input.value = activeSuggestions[highlightedIndex];
+          }
+          autocompleteEl.style.display = 'none';
+          activeInput = null;
+          activeSuggestions = [];
+          highlightedIndex = -1;
+        }
+      }
+    });
+
+    function updateHighlight() {
+      const items = autocompleteEl.querySelectorAll('.autocomplete-item');
+      items.forEach((item, i) => {
+        item.classList.toggle('highlighted', i === highlightedIndex);
+      });
+      if (highlightedIndex >= 0 && items[highlightedIndex]) {
+        items[highlightedIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }
+
+  tbody.querySelectorAll('.new-entry .entry-input').forEach(input => {
+    setupAutocomplete(input);
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (activeInput && !e.target.closest('.dropdown') && e.target !== activeInput) {
+      autocompleteEl.style.display = 'none';
+      activeInput = null;
+      activeSuggestions = [];
+      highlightedIndex = -1;
+    }
+  });
+}
+
+function escHTML(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Search
+document.getElementById('search').addEventListener('input', async (e) => {
+  const fragment = e.target.value;
+  state.search = fragment;
+  updateURL();
+
+  // Debounce search
+  clearTimeout(e.target._timer);
+  e.target._timer = setTimeout(() => loadEntries(), 300);
+});
+
+// Share button
+document.getElementById('share-btn').addEventListener('click', () => {
+  const url = new URL(window.location);
+  url.searchParams.set('t', state.readOnlyToken);
+  navigator.clipboard.writeText(url.toString()).then(() => {
+    alert('Link in die Zwischenablage kopiert!');
+  });
+});
+
+// QR button - opens printable page with QR code, URL text, and filter info
+document.getElementById('qr-btn').addEventListener('click', () => {
+  const url = new URL(window.location);
+  url.searchParams.set('t', state.readOnlyToken);
+  for (const [k, v] of Object.entries(state.filters)) {
+    if (v) url.searchParams.set(URL_FIELD_PREFIX + k, v);
+  }
+  const qrText = url.toString();
+
+  const schema = state.schemas?.[state.schema] || {};
+  const attrTitles = schema.attribute_titles_by_key || {};
+  let filterText = '';
+  const filterEntries = Object.entries(state.filters).filter(([k, v]) => v);
+  if (filterEntries.length > 0) {
+    filterText = '<div class="filters">';
+    for (const [attr, value] of filterEntries) {
+      const title = (attrTitles[attr] && attrTitles[attr][0]) || attr;
+      filterText += '<div><strong>' + escHTML(title) + ':</strong> ' + escHTML(value) + '</div>';
+    }
+    filterText += '</div>';
+  }
+
+  const qrWin = window.open('', '_blank', 'width=500,height=600');
+  const qrHTML = '<!DOCTYPE html>\n<html><head><title>QR-Code</title>\n' +
+'<link rel="stylesheet" href="/static/style.css">\n' +
+'<script src="/static/qrcanvas.js"><\/script>\n' +
+'<style>\n' +
+'@media print {\n' +
+'  body { margin: 0; padding: 20px; }\n' +
+'  .no-print { display: none !important; }\n' +
+'}\n' +
+'body {\n' +
+'  text-align: center;\n' +
+'  padding: 40px;\n' +
+'  font-family: sans-serif;\n' +
+'  background: #f0f4f8;\n' +
+'}\n' +
+'#qr-container {\n' +
+'  display: inline-block;\n' +
+'  background: #fff;\n' +
+'  padding: 20px;\n' +
+'  border-radius: 12px;\n' +
+'  box-shadow: 0 2px 12px rgba(0,0,0,0.1);\n' +
+'}\n' +
+'.url-text {\n' +
+'  margin-top: 20px;\n' +
+'  font-size: 11px;\n' +
+'  color: #666;\n' +
+'  word-break: break-all;\n' +
+'  max-width: 400px;\n' +
+'  margin-left: auto;\n' +
+'  margin-right: auto;\n' +
+'}\n' +
+'.filters {\n' +
+'  margin-top: 20px;\n' +
+'  text-align: left;\n' +
+'  display: inline-block;\n' +
+'  font-size: 26px;\n' +
+'  color: #444;\n' +
+'}\n' +
+'.filters div { margin: 4px 0; }\n' +
+'.filters strong { color: #333; }\n' +
+'@media screen {\n' +
+'  button {\n' +
+'    margin-top: 20px;\n' +
+'    padding: 10px 24px;\n' +
+'    font-size: 16px;\n' +
+'    border: none;\n' +
+'    border-radius: 8px;\n' +
+'    cursor: pointer;\n' +
+'    background: #d4c4f0;\n' +
+'    color: #5a4a8a;\n' +
+'  }\n' +
+'}\n' +
+'</style>\n' +
+'</head>\n<body>\n' +
+filterText + '\n<br>' +
+'<div id="qr-container"></div>\n' +
+'<div class="url-text" id="url-text"></div>\n' +
+'<button class="no-print" onclick="window.print()">Drucken</button>\n' +
+'<script>\n' +
+'(function(){\n' +
+'var container=document.getElementById("qr-container");\n' +
+'var canvas=qrcanvas.qrcanvas({cellSize:8,data:"' + qrText.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '"});\n' +
+'container.appendChild(canvas);\n' +
+'document.getElementById("url-text").textContent="' + qrText.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '";\n' +
+'})();\n' +
+'<\/script></body></html>';
+  qrWin.document.write(qrHTML);
+  qrWin.document.close();
+});
+
+// Init
+async function init() {
+  loadFromURL();
+  await loadSchemas();
+  if (state.schema) await loadEntries();
+}
+init();
+</script>
+</body>
+</html>

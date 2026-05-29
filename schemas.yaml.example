@@ -1,0 +1,28 @@
+clothing:
+  title: Kleidung
+  attribute_titles:
+    - [type, Art, Arten]
+    - [sub_type, Sub-Art, Sub-Arten]
+    - [material, Material, Materialien]
+    - [size, Größe, Größen]
+    - [color, Farbe, Farben]
+    - [property, Merkmal, Merkmale]
+    - [location, Kiste, Kisten]
+shoes:
+  title: Schuhe
+  attribute_titles:
+    - [type, Art, Arten]
+    - [sub_type, Sub-Art, Sub-Arten]
+    - [material, Material, Materialien]
+    - [size, Größe, Größen]
+    - [color, Farbe, Farben]
+    - [property, Merkmal, Merkmale]
+    - [location, Ort, Orte]
+books:
+  title: Bücher und Spiele
+  attribute_titles:
+    - [type, Art, Arten]
+    - [sub_type, Sub-Art, Sub-Arten]
+    - [author, Autor, Autoren]
+    - [title, Titel, Titel]
+    - [location, Ort, Orte]

@@ -1,0 +1,3 @@
+tokens:
+  read: "example-readtoken"
+  read_write: "example-readwritetoken"

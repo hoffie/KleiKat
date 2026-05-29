@@ -1,0 +1,74 @@
+KleiKat is a web application for managing clothing, shoes, or other home inventory items.
+
+It categorizes all items by several properties and makes it easy to search them.
+
+## Stack
+Go, SQLite, single page app (HTML, vanilla JavaScript/CSS)
+
+## Language
+All technical parts in English, the UI is German.
+
+## Schema
+The application supports multiple types of tables ("schemas"), e.g. cloths, shoes, books.
+Each schema requires different attributes.
+Supported schemas are defined in schemas.yaml, which is utilized by both the backend and the UI (JS).
+Example:
+```yaml
+  clothing:
+    title: Kleidung
+    attribute_titles:
+      type: [Art, Arten]
+      sub_type: [Sub-Art, Sub-Arten]
+      material: [Material, Materialien]
+      size: [Größe, Größen]
+      color: [Farbe, Farben]
+      property: [Merkmal, Merkmale]
+      location: [Ort, Orte]
+```
+
+
+## Database
+One table with the column "schema" (e.g. clothing or shoes), column "entry_id", column "attribute", column "value".
+entry_id + attribute are UNIQUE.
+
+## UI
+The UI is based around a table.
+Each row in the table shows all attributes for a given entry_id from the database.
+The UI must work easily on phones and tablets.
+Buttons use unicode symbols, no text.
+Use kleikat.png in the header.
+Use a light, pastel color scheme.
+
+### Adding items
+1. Adding new items works by entering the data in the first row, which consists of input fields.
+2. All fields are freetext, but existing entries which match the currently typed fragment are automatically suggested (most common, best matches at the top).
+3. Store the current search/filters in the URL.
+4. There is a "Link teilen" button which copies the current URL (with all filters and ALWAYS the readonly token!) to the clipboard.
+5. When logged in with the write token, there is a "QR-Code drucken" button which opens a new window which displays a QR code and links to the current page with all filters and the READ token embedded. Generate the QR code directly in the browser (no external services). On the printable place, the URL (from the QR code) is also written in readable text. All filters which have values (e.g. "Ort") will be shown with their value (use the human-readable name from the schema, not the DB attribute name).
+
+### Editing items
+Each row has an edit button which transforms the row into an editable row, similar to the new-entry logic.
+
+### Removing items
+Each row has an delete button, which deletes the entry after confirmation.
+
+### Filtering
+There is a search field. Typing a word updates the table and shows only entries where the word appears in at least one column.
+Each column has a dropdown which allows selecting any available value of that column (similar to Excel filtering).
+
+## Security
+All API endpoints are only reachable after authenticating with a X-Read-Token or X-ReadWrite-Token header.
+The token is passed as part of the URL, but the UI stores it in localStorage and sends it as part of each API request as a header and removes it from the URL to avoid leaks.
+Without token, the API returns 403.
+With a valid readToken=, the API permits read-only access (open DB as readonly, reject all write endpoints).
+With a valid readWriteToken=, API write endpoints are enabled as well.
+The tokens a configured in a config.yaml.
+config.yaml must not be served as a static file to the user.
+
+## CLI
+There is a CLI command to import a CSV file, e.g. ./kleikat import -schema shoes shoes.csv (where the csv has the appropriate singular attribute headers, e.g. "Größe"):
+
+
+## Other
+Make it minimal.
+When you run tests, always set them up to run in a reproducible way (preferably Go unit tests, or manual tests in a Makefile).
