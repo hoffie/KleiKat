@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KleiKat</title>
-<link rel="icon" type="image/png" href="/kleikat.png">
-<link rel="stylesheet" href="/static/style.css">
-<script src="/static/qrcanvas.js"></script>
+<link rel="icon" type="image/png" href="kleikat.png">
+<link rel="stylesheet" href="style.css">
+<script src="qrcanvas.js"></script>
 </head>
 <body>
 <header>
-  <img src="/kleikat.png" alt="KleiKat" id="logo">
+  <img src="kleikat.png" alt="KleiKat" id="logo">
   <span>KleiKat</span>
 </header>
 
@@ -47,7 +47,7 @@ const state = {
   schemas: null,
 };
 
-const API = '/api';
+const API = window.location.pathname + 'api';
 const URL_FIELD_PREFIX = 'f.';
 const FILTER_SEP = '^';
 
@@ -724,8 +724,8 @@ document.getElementById('qr-btn').addEventListener('click', () => {
 
   const qrWin = window.open('', '_blank', 'width=500,height=600');
   const qrHTML = '<!DOCTYPE html>\n<html><head><title>QR-Code</title>\n' +
-'<link rel="stylesheet" href="/static/style.css">\n' +
-'<script src="/static/qrcanvas.js"><\/script>\n' +
+'<link rel="stylesheet" href="style.css">\n' +
+'<script src="qrcanvas.js"><\/script>\n' +
 '<style>\n' +
 '@media print {\n' +
 '  body { margin: 0; padding: 20px; }\n' +

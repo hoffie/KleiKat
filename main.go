@@ -36,25 +36,11 @@ func main() {
 	defer db.Close()
 
 	// Serve static files
-	fs := http.FileServer(http.Dir("static"))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
+	fs := http.FileServer(http.Dir("assets"))
+	http.Handle("/", fs)
 
 	// API routes
 	http.HandleFunc("/api/", handleAPI(db, cfg))
-
-	// Serve static assets
-	http.HandleFunc("/kleikat.png", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./kleikat.png")
-	})
-
-	// Serve frontend
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
-			http.ServeFile(w, r, "index.html")
-		} else {
-			http.NotFound(w, r)
-		}
-	})
 
 	log.Printf("KleiKat starting on :%d", *port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
