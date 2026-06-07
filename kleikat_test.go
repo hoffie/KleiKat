@@ -36,7 +36,7 @@ func TestDBInitSchema(t *testing.T) {
 		t.Fatalf("AddEntry failed: %v", err)
 	}
 
-	entries, err := db.GetEntries("clothing", "", nil)
+	entries, err := db.GetEntries("clothing", "", nil, nil)
 	if err != nil {
 		t.Fatalf("GetEntries failed: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestDBUniqueConstraint(t *testing.T) {
 		t.Fatalf("second AddEntry (same entry_id) failed: %v", err)
 	}
 
-	entries, err := db.GetEntries("clothing", "", nil)
+	entries, err := db.GetEntries("clothing", "", nil, nil)
 	if err != nil {
 		t.Fatalf("GetEntries failed: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestDBSearch(t *testing.T) {
 	db.AddEntry("clothing", "a3", map[string]string{"type": "Hose", "color": "Schwarz"})
 
 	// Search by type
-	entries, err := db.GetEntries("clothing", "Hemd", nil)
+	entries, err := db.GetEntries("clothing", "Hemd", nil, nil)
 	if err != nil {
 		t.Fatalf("GetEntries with search failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestDBSearch(t *testing.T) {
 	}
 
 	// Search by color
-	entries, err = db.GetEntries("clothing", "Schwarz", nil)
+	entries, err = db.GetEntries("clothing", "Schwarz", nil, nil)
 	if err != nil {
 		t.Fatalf("GetEntries with search failed: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestDBFilters(t *testing.T) {
 
 	// Filter by color
 	filters := map[string][]string{"color": {"Blau"}}
-	entries, err := db.GetEntries("clothing", "", filters)
+	entries, err := db.GetEntries("clothing", "", filters, nil)
 	if err != nil {
 		t.Fatalf("GetEntries with filters failed: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestDBUpdateEntry(t *testing.T) {
 		t.Fatalf("UpdateEntry failed: %v", err)
 	}
 
-	entries, err := db.GetEntries("clothing", "", nil)
+	entries, err := db.GetEntries("clothing", "", nil, nil)
 	if err != nil {
 		t.Fatalf("GetEntries failed: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestDBDeleteEntry(t *testing.T) {
 		t.Fatalf("DeleteEntry failed: %v", err)
 	}
 
-	entries, err := db.GetEntries("clothing", "", nil)
+	entries, err := db.GetEntries("clothing", "", nil, nil)
 	if err != nil {
 		t.Fatalf("GetEntries failed: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestDBReadOnly(t *testing.T) {
 	}
 
 	// Read should still work
-	entries, err := dbRO.GetEntries("clothing", "", nil)
+	entries, err := dbRO.GetEntries("clothing", "", nil, nil)
 	if err != nil {
 		t.Fatalf("GetEntries in readonly mode failed: %v", err)
 	}
@@ -443,12 +443,97 @@ Sandale,38, Braun
 	}
 
 	// Verify
-	entries, err := db.GetEntries("shoes", "", nil)
+	entries, err := db.GetEntries("shoes", "", nil, nil)
 	if err != nil {
 		t.Fatalf("GetEntries failed: %v", err)
 	}
 	if len(entries) != 3 {
 		t.Fatalf("expected 3 entries in DB, got %d", len(entries))
+	}
+}
+
+func TestGetEntriesSortOrder(t *testing.T) {
+	db, tmpDir := setupTestDB(t)
+	defer func() { db.Close(); os.RemoveAll(tmpDir) }()
+
+	db.AddEntry("clothing", "e1", map[string]string{"type": "Hemd", "sub_type": "Langarm", "size": "M"})
+	db.AddEntry("clothing", "e2", map[string]string{"type": "Jacke", "sub_type": "Daunjacke", "size": "L"})
+	db.AddEntry("clothing", "e3", map[string]string{"type": "Hemd", "sub_type": "Kurzarm", "size": "S"})
+	db.AddEntry("clothing", "e4", map[string]string{"type": "Jacke", "sub_type": "Daunjacke", "size": "M"})
+
+	// Sort by type, then sub_type, then size
+	sortOrder := []string{"type", "sub_type", "size"}
+	entries, err := db.GetEntries("clothing", "", nil, sortOrder)
+	if err != nil {
+		t.Fatalf("GetEntries with sort failed: %v", err)
+	}
+	if len(entries) != 4 {
+		t.Fatalf("expected 4 entries, got %d", len(entries))
+	}
+
+	// Hemd comes before Jacke alphabetically
+	if entries[0].Attrs["type"] != "Hemd" {
+		t.Fatalf("expected first entry type=Hemd, got %s", entries[0].Attrs["type"])
+	}
+	if entries[0].Attrs["sub_type"] != "Kurzarm" {
+		t.Fatalf("expected first entry sub_type=Kurzarm, got %s", entries[0].Attrs["sub_type"])
+	}
+	if entries[0].Attrs["size"] != "S" {
+		t.Fatalf("expected first entry size=S, got %s", entries[0].Attrs["size"])
+	}
+
+	// Hemd, Kurzarm, S < Hemd, Langarm, M
+	if entries[1].Attrs["sub_type"] != "Langarm" {
+		t.Fatalf("expected second entry sub_type=Langarm, got %s", entries[1].Attrs["sub_type"])
+	}
+
+	// Jacke, Daunjacke, L < Jacke, Daunjacke, M
+	if entries[2].Attrs["type"] != "Jacke" {
+		t.Fatalf("expected third entry type=Jacke, got %s", entries[2].Attrs["type"])
+	}
+	if entries[2].Attrs["size"] != "L" {
+		t.Fatalf("expected third entry size=L, got %s", entries[2].Attrs["size"])
+	}
+}
+
+func TestGetEntriesSortEmpty(t *testing.T) {
+	db, tmpDir := setupTestDB(t)
+	defer func() { db.Close(); os.RemoveAll(tmpDir) }()
+
+	db.AddEntry("clothing", "e1", map[string]string{"type": "Hemd"})
+	db.AddEntry("clothing", "e2", map[string]string{"type": "Jacke"})
+
+	// Empty sort order should not sort
+	entries, err := db.GetEntries("clothing", "", nil, nil)
+	if err != nil {
+		t.Fatalf("GetEntries with empty sort failed: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+}
+
+func TestGetEntriesSortSingleAttribute(t *testing.T) {
+	db, tmpDir := setupTestDB(t)
+	defer func() { db.Close(); os.RemoveAll(tmpDir) }()
+
+	db.AddEntry("clothing", "e1", map[string]string{"color": "Rot", "type": "Hemd"})
+	db.AddEntry("clothing", "e2", map[string]string{"color": "Blau", "type": "Jacke"})
+	db.AddEntry("clothing", "e3", map[string]string{"color": "Grün", "type": "Hose"})
+
+	entries, err := db.GetEntries("clothing", "", nil, []string{"color"})
+	if err != nil {
+		t.Fatalf("GetEntries with sort failed: %v", err)
+	}
+
+	if entries[0].Attrs["color"] != "Blau" {
+		t.Fatalf("expected first entry color=Blau, got %s", entries[0].Attrs["color"])
+	}
+	if entries[1].Attrs["color"] != "Grün" {
+		t.Fatalf("expected second entry color=Grün, got %s", entries[1].Attrs["color"])
+	}
+	if entries[2].Attrs["color"] != "Rot" {
+		t.Fatalf("expected third entry color=Rot, got %s", entries[2].Attrs["color"])
 	}
 }
 

@@ -224,7 +224,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 						filters[k[2:]] = strings.Split(v[0], FILTER_SEP)
 					}
 				}
-				entries, err := activeDB.GetEntries(schema, search, filters)
+				entries, err := activeDB.GetEntries(schema, search, filters, cfg.Schemas[schema].Sort)
 				if err != nil {
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return

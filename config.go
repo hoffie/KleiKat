@@ -16,6 +16,7 @@ type Config struct {
 type Scheme struct {
 	Title           string            `yaml:"title"`
 	AttributeTitles [][]string `yaml:"attribute_titles"`
+	Sort            []string          `yaml:"sort"`
 }
 
 func LoadConfig(path string) (*Config, error) {

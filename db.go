@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -88,7 +89,7 @@ func (d *DB) GetSchemas() ([]string, error) {
 	return schemas, nil
 }
 
-func (d *DB) GetEntries(schema, search string, filters map[string][]string) ([]Entry, error) {
+func (d *DB) GetEntries(schema, search string, filters map[string][]string, sortOrder []string) ([]Entry, error) {
 	// Build query to get all attributes for entries matching criteria
 	query := `
 		SELECT schema, entry_id, attribute, value FROM items
@@ -122,8 +123,6 @@ func (d *DB) GetEntries(schema, search string, filters map[string][]string) ([]E
 		}
 	}
 	
-	query += ` ORDER BY entry_id`
-	
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -154,6 +153,20 @@ func (d *DB) GetEntries(schema, search string, filters map[string][]string) ([]E
 	entries := make([]Entry, 0, len(entryOrder))
 	for _, eid := range entryOrder {
 		entries = append(entries, *entriesMap[eid])
+	}
+	
+	// Sort entries based on sortOrder
+	if len(sortOrder) > 0 {
+		sort.SliceStable(entries, func(i, j int) bool {
+			for _, attr := range sortOrder {
+				valI := entries[i].Attrs[attr]
+				valJ := entries[j].Attrs[attr]
+				if valI != valJ {
+					return valI < valJ
+				}
+			}
+			return false
+		})
 	}
 	
 	return entries, nil

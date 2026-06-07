@@ -60,7 +60,13 @@ clothing:
     - [color, Farbe, Farben]
     - [property, Merkmal, Merkmale]
     - [location, Ort, Orte]
+  sort:
+    - type
+    - sub_type
+    - size
 ```
+
+The `sort` key defines the order in which entries are returned when listing them. Entries are sorted by the specified attributes in order, using lexicographic comparison.
 
 ### Running the Server
 

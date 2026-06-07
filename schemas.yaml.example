@@ -8,16 +8,24 @@ clothing:
     - [color, Farbe, Farben]
     - [property, Merkmal, Merkmale]
     - [location, Kiste, Kisten]
+  sort:
+    - type
+    - sub_type
+    - size
 shoes:
   title: Schuhe
   attribute_titles:
-    - [type, Art, Arten]
-    - [sub_type, Sub-Art, Sub-Arten]
-    - [material, Material, Materialien]
-    - [size, Größe, Größen]
+    - [brand, Marke, Marken]
+    - [type, Typ, Typen]
     - [color, Farbe, Farben]
-    - [property, Merkmal, Merkmale]
+    - [size, Größe, Größen]
+    - [mm, mm, mm]
+    - [real_size, "Wahre Größe", "Wahre Größen"]
+    - [property, Besonderheit, Besonderheiten]
     - [location, Ort, Orte]
+  sort:
+    - mm
+    - type
 books:
   title: Bücher und Spiele
   attribute_titles:
