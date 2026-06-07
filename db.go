@@ -17,11 +17,11 @@ type DB struct {
 func OpenDB(path string, readonly bool) (*DB, error) {
 	var flags string
 	if readonly {
-		flags = "?mode=rwc"
+		flags = "&mode=rwc"
 	} else {
 		flags = ""
 	}
-	d, err := sql.Open("sqlite", path+flags)
+	d, err := sql.Open("sqlite", path+"?_busy_timeout=1000"+flags)
 	if err != nil {
 		return nil, err
 	}
