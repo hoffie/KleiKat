@@ -20,6 +20,7 @@
     <input type="text" id="search" placeholder="&#x1F50D; Suche" autocomplete="off">
     <button id="share-btn" title="Link teilen">&#x1F4CE;</button>
     <button id="qr-btn" title="QR-Code drucken">&#x1F5A8;</button>
+    <button id="csv-btn" title="CSV exportieren">&#x1F4D9;</button>
   </div>
 
   <div id="table-container">
@@ -192,7 +193,45 @@ async function loadEntries() {
     if (v) params[URL_FIELD_PREFIX + k] = v;
   }
   const entries = await api(`/schema/${state.schema}`, { params });
+  state.currentEntries = entries;
   await renderTable(entries);
+}
+
+function exportCSV() {
+  const entries = state.currentEntries;
+  if (!entries || entries.length === 0) {
+    alert('Keine Daten zum Exportieren.');
+    return;
+  }
+  const schema = state.schemas?.[state.schema] || {};
+  const attrNames = schema.ordered_attribute_title_keys || [];
+  const attrTitles = schema.attribute_titles_by_key || {};
+
+  // CSV header row with display titles
+  const headers = attrNames.map(attr => (attrTitles[attr] && attrTitles[attr][0]) || attr);
+
+  // CSV data rows
+  const rows = entries.map(entry =>
+    attrNames.map(attr => {
+      const val = entry.attrs[attr] || '';
+      // Escape for CSV: wrap in quotes if contains comma, quote, or newline
+      if (/[",\n\r]/.test(val)) {
+        return '"' + val.replace(/"/g, '""') + '"';
+      }
+      return val;
+    })
+  );
+
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (state.schema || 'export') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 async function getDistinctValues(schema) {
@@ -648,6 +687,9 @@ document.getElementById('search').addEventListener('input', async (e) => {
   clearTimeout(e.target._timer);
   e.target._timer = setTimeout(() => loadEntries(), 300);
 });
+
+// CSV export button
+document.getElementById('csv-btn').addEventListener('click', exportCSV);
 
 // Share button
 document.getElementById('share-btn').addEventListener('click', () => {
