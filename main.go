@@ -7,13 +7,25 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 const FILTER_SEP = "^"
+const IMAGE_MAX_SIZE = 10 << 20 // 10MB max
+
+var (
+	imageBaseDir     string
+	imageTempDir string
+	imageThumbDir string
+	isValidImageFilename = regexp.MustCompile(`\A[0-9a-f]{8,32}\.[a-z]{3,4}\z`).MatchString
+)
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "import" {
@@ -29,6 +41,23 @@ func main() {
 		log.Fatalf("Load config: %v", err)
 	}
 
+	imagePath := cfg.ImagePath
+	if imagePath != "" {
+		imageBaseDir = imagePath
+		imageTempDir = filepath.Join(imagePath, "temp")
+		imageThumbDir = filepath.Join(imagePath, "thumbs")
+		if err := os.MkdirAll(imagePath, 0755); err != nil {
+			log.Fatalf("Create image directory: %v", err)
+		}
+		if err := os.MkdirAll(imageTempDir, 0755); err != nil {
+			log.Fatalf("Create temp image directory: %v", err)
+		}
+		if err := os.MkdirAll(imageThumbDir, 0755); err != nil {
+			log.Fatalf("Create thumbnail directory: %v", err)
+		}
+
+	}
+
 	db, err := OpenDB("kleikat.db", false)
 	if err != nil {
 		log.Fatalf("Open DB: %v", err)
@@ -38,6 +67,11 @@ func main() {
 	// Serve static files
 	fs := http.FileServer(http.Dir("assets"))
 	http.Handle("/", fs)
+
+	// Serve images if configured
+	if imagePath != "" {
+		http.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir(imagePath))))
+	}
 
 	// API routes
 	http.HandleFunc("/api/", handleAPI(db, cfg))
@@ -274,6 +308,12 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 				if body.EntryID == "" {
 					body.EntryID = generateID()
 				}
+
+				// Process image if present
+				if imgPath, ok := body.Attrs["image"]; ok {
+					body.Attrs["image"] = processTempImage(imgPath, body.EntryID)
+				}
+
 				if err := activeDB.AddEntry(schema, body.EntryID, body.Attrs); err != nil {
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -309,16 +349,143 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 					writeError(w, err.Error(), http.StatusForbidden)
 					return
 				}
-				if err := activeDB.DeleteEntry(schema, parts[2]); err != nil {
+				entryID := parts[2]
+
+				// Delete associated image
+				go deleteEntryImages(entryID)
+
+				if err := activeDB.DeleteEntry(schema, entryID); err != nil {
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
 				writeJSON(w, map[string]string{"ok": "true"})
 				return
 			}
+
+			// POST /api/schema/{name}/{entry_id}/upload-image - upload image
+			if r.Method == http.MethodPost && len(parts) == 3 && parts[2] == "upload-image" {
+				if err := activeDB.CheckWrite(); err != nil {
+					writeError(w, err.Error(), http.StatusForbidden)
+					return
+				}
+
+				if imageBaseDir == "" {
+					writeError(w, "image upload not configured", http.StatusForbidden)
+					return
+				}
+
+				filename, err := saveUploadToTemp(r)
+				if err != nil {
+					writeError(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				writeJSON(w, map[string]string{"filename": filename})
+				return
+			}
 		}
 
 		writeError(w, "not found", http.StatusNotFound)
+	}
+}
+
+func saveUploadToTemp(r *http.Request) (string, error) {
+	// Read multipart form
+	err := r.ParseMultipartForm(IMAGE_MAX_SIZE)
+	if err != nil {
+		return "", fmt.Errorf("parse form: %v", err)
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		return "", fmt.Errorf("no image file provided")
+	}
+	defer file.Close()
+
+	// Validate content type
+	contentType := header.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		// Also check by extension
+		ext := strings.ToLower(filepath.Ext(header.Filename))
+		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".gif" && ext != ".webp" {
+			return "", fmt.Errorf("unsupported image type: %s", header.Filename)
+		}
+	}
+
+	// Generate unique filename
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext == "" {
+		ext = ".jpg"
+	}
+	tempFilename := generateID() + ext
+	tempPath := filepath.Join(imageTempDir, tempFilename)
+
+	out, err := os.Create(tempPath)
+	if err != nil {
+		return "", fmt.Errorf("create file: %v", err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, file)
+	if err != nil {
+		os.Remove(tempPath)
+		return "", fmt.Errorf("save file: %v", err)
+	}
+
+	return tempFilename, nil
+}
+
+func processTempImage(tempFilename, entryID string) string {
+	if imageBaseDir == "" || !isValidImageFilename(tempFilename) {
+		return ""
+	}
+
+	tempPath := filepath.Join(imageTempDir, tempFilename)
+	ext := strings.ToLower(filepath.Ext(tempFilename))
+	finalFilename := entryID + ext
+	finalPath := filepath.Join(imageBaseDir, finalFilename)
+
+	// Move temp file to final location
+	err := os.Rename(tempPath, finalPath)
+	if err != nil {
+		return ""
+	}
+
+	// Generate thumbnail in background
+	go generateThumbnail(finalPath, finalFilename)
+
+	return finalFilename
+}
+
+func generateThumbnail(imagePath, filename string) {
+	thumbPath := filepath.Join(imageThumbDir, filename)
+
+	// Check if imagemagick is available
+	_, err := exec.LookPath("magick")
+	if err != nil {
+		log.Printf("ImageMagick not found, skipping thumbnail generation")
+		return
+	}
+
+	// Generate 32x32 thumbnail
+	cmd := exec.Command("convert", imagePath, "-thumbnail", "32x32", thumbPath)
+	if err := cmd.Run(); err != nil {
+		log.Printf("Failed to generate thumbnail: %v", err)
+		return
+	}
+}
+
+func deleteEntryImages(entryID string) {
+	if imageBaseDir == "" {
+		return
+	}
+
+	exts := []string{".jpg", ".jpeg", ".png", ".gif", ".webp"}
+	for _, ext := range exts {
+		imgPath := filepath.Join(imageBaseDir, entryID+ext)
+		os.Remove(imgPath)
+
+		thumbPath := filepath.Join(imageThumbDir, entryID+ext)
+		os.Remove(thumbPath)
 	}
 }
 

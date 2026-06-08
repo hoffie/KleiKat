@@ -10,7 +10,8 @@ type Config struct {
 		Read      string `yaml:"read"`
 		ReadWrite string `yaml:"read_write"`
 	} `yaml:"tokens"`
-	Schemas map[string]Scheme `yaml:"schemas"`
+	Schemas    map[string]Scheme `yaml:"schemas"`
+	ImagePath  string            `yaml:"image_path"`
 }
 
 type Scheme struct {

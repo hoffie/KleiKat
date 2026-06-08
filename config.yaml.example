@@ -1,3 +1,7 @@
 tokens:
   read: "example-readtoken"
   read_write: "example-readwritetoken"
+
+# Optional: path for storing uploaded images
+# If not set, image upload is disabled
+# image_path: "/path/to/image/storage"

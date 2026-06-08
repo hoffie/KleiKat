@@ -37,6 +37,15 @@
 <div id="autocomplete" class="dropdown"></div>
 <div id="filter-dropdown" class="dropdown"></div>
 
+<div id="image-overlay">
+  <div id="image-overlay-content">
+    <span id="image-overlay-close">&#10005;</span>
+    <img id="image-overlay-img" src="" alt="">
+  </div>
+</div>
+
+<input type="file" id="image-input" accept="image/*" style="display:none" capture>
+
 <script>
 const state = {
   schema: '',
@@ -293,7 +302,7 @@ async function renderTable(entries) {
 
   // Header
   const thead = table.querySelector('#table-head');
-  let headHTML = '<tr>';
+  let headHTML = '<tr><th data-attr="__image__">&nbsp;</th>';
   for (const attr of attrNames) {
     const title = attrs[attr][0] || attr;
     const filterTags = buildFilterTags(attr);
@@ -316,6 +325,7 @@ async function renderTable(entries) {
   // New entry row (first row)
   if (state.canWrite) {
     bodyHTML += '<tr class="new-entry">';
+    bodyHTML += '<td><div class="img-preview"></div><button class="upload-img-btn" title="Bild hochladen">&#128247;</button></td>';
     for (const attr of attrNames) {
       const placeholder = attrs[attr][0] || attr;
       bodyHTML += `<td><input type="text" class="entry-input" data-attr="${attr}" placeholder="${placeholder}"></td>`;
@@ -326,7 +336,14 @@ async function renderTable(entries) {
 
   // Data rows
   for (const entry of entries) {
-    bodyHTML += `<tr data-entry-id="${entry.entry_id}">`;
+    bodyHTML += `<tr data-entry-id="${entry.entry_id}"><td>`;
+    const imgFile = entry.attrs['image'];
+    if (imgFile) {
+      bodyHTML += `<img class="thumbnail" src="/images/${escHTML(imgFile)}" data-full="/images/${escHTML(imgFile)}" title="Bild anklicken">`;
+    } else {
+      bodyHTML += `&nbsp;`;
+    }
+    bodyHTML += `</td>`;
     for (const attr of attrNames) {
       const val = entry.attrs[attr] || '';
       bodyHTML += `<td><span class="cell-value">${escHTML(val)}</span></td>`;
@@ -344,28 +361,108 @@ async function renderTable(entries) {
 
   // Attach new entry save
   const addBtn = tbody.querySelector('.add-btn');
+  const newEntryRow = tbody.querySelector('.new-entry');
   if (addBtn) {
     addBtn.addEventListener('click', async () => {
       const inputs = tbody.querySelectorAll('.new-entry .entry-input');
       const attrs = {};
       inputs.forEach(inp => { if (inp.value) attrs[inp.dataset.attr] = inp.value; });
       if (Object.keys(attrs).length === 0) return;
+      if (newEntryRow && newEntryRow.dataset.image) {
+        attrs['image'] = newEntryRow.dataset.image;
+      }
       await api(`/schema/${state.schema}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ attrs }),
       });
       inputs.forEach(inp => inp.value = '');
+      if (newEntryRow) {
+        delete newEntryRow.dataset.image;
+        const previewCell = newEntryRow.querySelector('.img-preview');
+        previewCell.innerHTML = '';
+        const uploadBtn = tbody.querySelector('.upload-img-btn');
+        uploadBtn.style.display = 'inline-block';
+      }
       loadEntries();
     });
   }
+
+  // Attach upload image button
+  const uploadBtn = tbody.querySelector('.upload-img-btn');
+  const imageInput = document.getElementById('image-input');
+  if (uploadBtn && imageInput) {
+    uploadBtn.addEventListener('click', () => imageInput.click());
+    imageInput.addEventListener('change', async () => {
+      const file = imageInput.files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      try {
+        const resp = await fetch(`${API}/schema/${state.schema}/upload-image`, {
+          method: 'POST',
+          headers: { 'X-Token': state.fullToken },
+          body: formData,
+        });
+        if (resp.status < 200 || resp.status > 299) {
+          let error = "";
+          try { error = (await resp.json())['error']; } catch {}
+          alert(`Fehler: ${error}`);
+          return;
+        }
+        const data = await resp.json();
+
+        // Show preview in the new-entry row
+        if (newEntryRow) {
+          newEntryRow.dataset.image = data.filename;
+          const uploadBtn = tbody.querySelector('.upload-img-btn');
+          uploadBtn.style.display = 'none';
+          const previewCell = newEntryRow.querySelector('.img-preview');
+          previewCell.innerHTML = `<img class="img-preview-thumb" src="/images/temp/${data.filename}">`;
+          previewCell.querySelector('img').addEventListener('click', () => {
+            previewCell.innerHTML = '';
+            uploadBtn.style.display = 'inline-block';
+          });
+        }
+      } catch (e) {
+        alert(`Upload fehlgeschlagen: ${e.message}`);
+      }
+
+      imageInput.value = '';
+    });
+  }
+
+  // Image overlay
+  const overlay = document.getElementById('image-overlay');
+  const overlayImg = document.getElementById('image-overlay-img');
+  const overlayClose = document.getElementById('image-overlay-close');
+
+  // Attach thumbnail click handlers
+  tbody.querySelectorAll('.thumbnail').forEach(img => {
+    img.addEventListener('click', () => {
+      overlayImg.src = img.dataset.full;
+      overlay.style.display = 'flex';
+    });
+  });
+
+  overlayClose.addEventListener('click', () => {
+    overlay.style.display = 'none';
+  });
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      overlay.style.display = 'none';
+    }
+  });
 
   // Attach edit buttons
   tbody.querySelectorAll('.edit-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const row = btn.closest('tr');
       const eid = row.dataset.entryId;
-      const inputs = row.querySelectorAll('td:not(:last-child)');
+      const inputs = row.querySelectorAll('td:not(:last-child):not(:first-child)');
       inputs.forEach(td => {
         const span = td.querySelector('.cell-value');
         const thIdx = Array.from(td.parentElement.children).indexOf(td);
