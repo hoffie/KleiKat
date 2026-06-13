@@ -12,6 +12,10 @@ type Config struct {
 	} `yaml:"tokens"`
 	Schemas    map[string]Scheme `yaml:"schemas"`
 	ImagePath  string            `yaml:"image_path"`
+	LLM struct {
+		URL    string `yaml:"url"`
+		APIKey string `yaml:"api_key"`
+	} `yaml:"llm"`
 }
 
 type Scheme struct {

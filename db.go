@@ -44,6 +44,13 @@ func (d *DB) initSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_entry_id ON items (entry_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_attribute ON items (attribute)`,
 		`CREATE INDEX IF NOT EXISTS idx_value ON items (value)`,
+		`
+		CREATE TABLE IF NOT EXISTS image_attribute_suggestions (
+			filename TEXT NOT NULL,
+			attribute TEXT NOT NULL,
+			value TEXT NOT NULL,
+			UNIQUE(filename, attribute)
+		)`,
 	}
 	for _, sql := range sqls {
 		_, err := d.db.Exec(sql)
@@ -193,6 +200,31 @@ func (d *DB) GetDistinctValues(schema string) (map[string][]string, error) {
 	return values, nil
 }
 
+func (d *DB) GetDistinctValuesTopK(schema, attr string, limit int) ([]string, error) {
+	rows, err := d.db.Query(
+		`SELECT DISTINCT value FROM items
+		 WHERE schema = ? AND attribute = ?
+		 GROUP BY value
+		 ORDER BY COUNT(value) DESC
+		 LIMIT ?`,
+		schema, attr, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var values []string
+	for rows.Next() {
+		var val string
+		if err := rows.Scan(&val); err != nil {
+			return nil, err
+		}
+		values = append(values, val)
+	}
+	return values, nil
+}
+
 func (d *DB) GetAutocomplete(schema, attribute, fragment string) ([]string, error) {
 	rows, err := d.db.Query(
 		`SELECT DISTINCT value FROM items
@@ -288,5 +320,64 @@ func (d *DB) DeleteEntry(schema, entryID string) error {
 	}
 	
 	_, err := d.db.Exec(`DELETE FROM items WHERE schema = ? AND entry_id = ?`, schema, entryID)
+	return err
+}
+
+func (d *DB) StoreSuggestions(filename string, suggestions map[string]string) error {
+	if err := d.CheckWrite(); err != nil {
+		return err
+	}
+	
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	
+	_, err = tx.Exec(`DELETE FROM image_attribute_suggestions WHERE filename = ?`, filename)
+	if err != nil {
+		return err
+	}
+	
+	stmt, err := tx.Prepare(`INSERT INTO image_attribute_suggestions (filename, attribute, value) VALUES (?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	
+	for attr, val := range suggestions {
+		_, err := stmt.Exec(filename, attr, val)
+		if err != nil {
+			return err
+		}
+	}
+	
+	return tx.Commit()
+}
+
+func (d *DB) GetSuggestions(filename string) (map[string]string, error) {
+	rows, err := d.db.Query(
+		`SELECT attribute, value FROM image_attribute_suggestions WHERE filename = ?`,
+		filename,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	suggestions := make(map[string]string)
+	for rows.Next() {
+		var attr, val string
+		if err := rows.Scan(&attr, &val); err != nil {
+			return nil, err
+		}
+		suggestions[attr] = val
+	}
+	
+	return suggestions, nil
+}
+
+func (d *DB) DeleteSuggestions(filename string) error {
+	_, err := d.db.Exec(`DELETE FROM image_attribute_suggestions WHERE filename = ?`, filename)
 	return err
 }

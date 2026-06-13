@@ -339,7 +339,8 @@ async function renderTable(entries) {
     bodyHTML += `<tr data-entry-id="${entry.entry_id}"><td>`;
     const imgFile = entry.attrs['image'];
     if (imgFile) {
-      bodyHTML += `<img class="thumbnail" src="/images/${escHTML(imgFile)}" data-full="/images/${escHTML(imgFile)}" title="Bild anklicken">`;
+      bodyHTML += `<img class="thumbnail" src="/images/${escHTML(imgFile)}" data-full="/images/${escHTML(imgFile)}" data-filename="${escHTML(imgFile)}" title="Bild anklicken">`;
+      bodyHTML += `<button class="classify-btn" title="Klassifizieren" data-filename="${escHTML(imgFile)}">&#129302;</button>`;
     } else {
       bodyHTML += `&nbsp;`;
     }
@@ -444,6 +445,16 @@ async function renderTable(entries) {
     img.addEventListener('click', () => {
       overlayImg.src = img.dataset.full;
       overlay.style.display = 'flex';
+    });
+  });
+
+  // Attach classify button handlers
+  tbody.querySelectorAll('.classify-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const row = btn.closest('tr');
+      const filename = btn.dataset.filename;
+      triggerClassify(filename, row);
     });
   });
 
@@ -889,6 +900,140 @@ filterText + '\n<br>' +
   qrWin.document.write(qrHTML);
   qrWin.document.close();
 });
+
+// LLM Classification
+let activeSuggestionPanel = null;
+let suggestionPollTimer = null;
+
+async function triggerClassify(filename, row) {
+  try {
+    const resp = await fetch(`${API}/schema/${state.schema}/classify`, {
+      method: 'POST',
+      headers: {
+        'X-Token': state.fullToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ filename }),
+    });
+    if (resp.status < 200 || resp.status > 299) {
+      let error = "";
+      try { error = (await resp.json())['error']; } catch {}
+      alert(`Klassifizierung fehlgeschlagen: ${error}`);
+      return;
+    }
+    const data = await resp.json();
+    if (data.status === 'started') {
+      startPollingSuggestion(filename, row);
+    } else if (data && Object.keys(data).length > 0) {
+      showSuggestions(data, filename, row);
+    }
+  } catch (e) {
+    alert(`Klassifizierung fehlgeschlagen: ${e.message}`);
+  }
+}
+
+function startPollingSuggestion(filename, row) {
+  if (suggestionPollTimer) {
+    clearInterval(suggestionPollTimer);
+  }
+  suggestionPollTimer = setInterval(async () => {
+    try {
+      const suggestions = await api(`/schema/${state.schema}/suggestions/${filename}`);
+      if (suggestions && Object.keys(suggestions).length > 0) {
+        clearInterval(suggestionPollTimer);
+        suggestionPollTimer = null;
+        showSuggestions(suggestions, filename, row);
+      }
+    } catch {}
+  }, 2000);
+  setTimeout(() => {
+    if (suggestionPollTimer) {
+      clearInterval(suggestionPollTimer);
+      suggestionPollTimer = null;
+    }
+  }, 60000);
+}
+
+function showSuggestions(suggestions, filename, row) {
+  closeSuggestionPanel();
+
+  const panel = document.createElement('div');
+  panel.className = 'suggestions-panel';
+
+  let html = '<div class="suggestions-panel-header">';
+  html += '<span>&#129302; Vorschläge</span>';
+  html += '<span class="suggestions-panel-close">&#10005;</span>';
+  html += '</div>';
+
+  for (const [attr, value] of Object.entries(suggestions)) {
+    const title = getAttrTitle(state.schema, attr);
+    html += `<div class="suggestion-item">
+      <span class="suggestion-label">${escHTML(title)}</span>
+      <span class="suggestion-value">${escHTML(value)}</span>
+      <button class="suggestion-apply" data-attr="${escHTML(attr)}" data-value="${escHTML(value)}">Anwenden</button>
+    </div>`;
+  }
+
+  panel.innerHTML = html;
+
+  // Position panel
+  const rect = row.getBoundingClientRect();
+  panel.style.top = rect.top + 'px';
+  panel.style.left = (rect.right + 8) + 'px';
+
+  document.body.appendChild(panel);
+  activeSuggestionPanel = panel;
+
+  // Close button
+  panel.querySelector('.suggestions-panel-close').addEventListener('click', () => {
+    closeSuggestionPanel();
+  });
+
+  // Apply buttons
+  panel.querySelectorAll('.suggestion-apply').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const attr = btn.dataset.attr;
+      const value = btn.dataset.value;
+      applySuggestionToRow(row, attr, value);
+      closeSuggestionPanel();
+    });
+  });
+
+  // Click outside to close
+  setTimeout(() => {
+    document.addEventListener('click', function handler(e) {
+      if (!panel.contains(e.target) && e.target !== row && !row.contains(e.target)) {
+        closeSuggestionPanel();
+        document.removeEventListener('click', handler);
+      }
+    });
+  }, 0);
+}
+
+function closeSuggestionPanel() {
+  if (activeSuggestionPanel) {
+    activeSuggestionPanel.remove();
+    activeSuggestionPanel = null;
+  }
+  if (suggestionPollTimer) {
+    clearInterval(suggestionPollTimer);
+    suggestionPollTimer = null;
+  }
+}
+
+function applySuggestionToRow(row, attr, value) {
+  const cells = row.querySelectorAll('td:not(:last-child):not(:first-child)');
+  const attrNames = state.schemas?.[state.schema]?.ordered_attribute_title_keys || [];
+  for (let i = 0; i < cells.length; i++) {
+    if (attrNames[i] === attr) {
+      const span = cells[i].querySelector('.cell-value');
+      if (span) {
+        span.textContent = value;
+      }
+      break;
+    }
+  }
+}
 
 // Init
 async function init() {

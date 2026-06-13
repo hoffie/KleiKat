@@ -66,6 +66,17 @@ Each column has a dropdown which allows selecting any available value of that co
 - Clicking the thumbnail loads an overlay ("popup") with the full-size image.
 - When deleting an entry, the associated image is deleted as well (if existing).
 
+### LLM support
+As soon as an image is uploaded, it is sent to a configured (config.yaml) LLM API with an appropriate prompt to classify the image based on the schema's attributes (in the background).
+The LLM is provided with the top 500 distinct values for each attribute to make it easier for it to choose a matching attribute. Permit addition of new attribute values if appropriate.
+The LLM is instructed to return structured data as JSON.
+The result is written to the table "image_attribute_suggestions" (filename, attribute, value).
+The UI has a magic wand button right next to the uploaded image.
+When clicked, the attribute suggestions are copied to the relevant new-entry attribute fields. Existing values are not overwritten.
+If no values are available yet, the magic wand turns into a loading indicator and the API is polled for 10s.
+After that, loading stops and the button turns into the magic wand again.
+The LLM API uses Qwen-3.5 (Vision).
+
 ## Security
 All API endpoints are only reachable after authenticating with a X-Read-Token or X-ReadWrite-Token header.
 The token is passed as part of the URL, but the UI stores it in localStorage and sends it as part of each API request as a header and removes it from the URL to avoid leaks.
