@@ -434,6 +434,35 @@ td:last-child button:hover {
   cursor: not-allowed;
 }
 
+.loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #c8b8e8;
+  border-top-color: #5a4a8a;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+
+.loading-spinner.large {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-row td {
+  text-align: center;
+  padding: 24px !important;
+  color: #666;
+  font-size: 14px;
+  background: #f8f4ff;
+}
+
 #image-overlay {
   display: none;
   position: fixed;

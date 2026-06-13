@@ -202,6 +202,12 @@ async function loadEntries() {
   for (const [k, v] of Object.entries(state.filters)) {
     if (v) params[URL_FIELD_PREFIX + k] = v;
   }
+
+  const tbody = document.getElementById('table-body');
+  if (tbody) {
+    tbody.innerHTML = `<tr class="loading-row"><td colspan="99"><span class="loading-spinner large"></span> Laden...</td></tr>`;
+  }
+
   const entries = await api(`/schema/${state.schema}`, { params });
   state.currentEntries = entries;
   await renderTable(entries);
@@ -427,6 +433,14 @@ async function renderTable(entries) {
       const formData = new FormData();
       formData.append('image', downscaledFile, file.name);
 
+      // Show loading indicator in preview cell
+      const previewCell = newEntryRow?.querySelector('.img-preview');
+      const uploadBtn = newEntryRow?.querySelector('.upload-img-btn');
+      if (previewCell && uploadBtn) {
+        previewCell.innerHTML = '<span class="loading-spinner large"></span>';
+        uploadBtn.style.display = 'none';
+      }
+
       try {
         const resp = await fetch(`${API}/schema/${state.schema}/upload-image`, {
           method: 'POST',
@@ -437,6 +451,10 @@ async function renderTable(entries) {
           let error = "";
           try { error = (await resp.json())['error']; } catch {}
           alert(`Fehler: ${error}`);
+          if (previewCell && uploadBtn) {
+            previewCell.innerHTML = '';
+            uploadBtn.style.display = 'inline-block';
+          }
           return;
         }
         const data = await resp.json();
@@ -455,6 +473,10 @@ async function renderTable(entries) {
         }
       } catch (e) {
         alert(`Upload fehlgeschlagen: ${e.message}`);
+        if (previewCell && uploadBtn) {
+          previewCell.innerHTML = '';
+          uploadBtn.style.display = 'inline-block';
+        }
       }
 
       imageInput.value = '';
