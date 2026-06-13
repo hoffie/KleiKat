@@ -339,7 +339,7 @@ async function renderTable(entries) {
     bodyHTML += `<tr data-entry-id="${entry.entry_id}"><td>`;
     const imgFile = entry.attrs['image'];
     if (imgFile) {
-      bodyHTML += `<img class="thumbnail" src="/images/${escHTML(imgFile)}" data-full="/images/${escHTML(imgFile)}" data-filename="${escHTML(imgFile)}" title="Bild anklicken">`;
+      bodyHTML += `<img class="thumbnail" src="images/${escHTML(imgFile)}" data-full="images/${escHTML(imgFile)}" data-filename="${escHTML(imgFile)}" title="Bild anklicken">`;
       bodyHTML += `<button class="classify-btn" title="Klassifizieren" data-filename="${escHTML(imgFile)}">&#129302;</button>`;
     } else {
       bodyHTML += `&nbsp;`;
@@ -447,7 +447,7 @@ async function renderTable(entries) {
           const uploadBtn = tbody.querySelector('.upload-img-btn');
           uploadBtn.style.display = 'none';
           const previewCell = newEntryRow.querySelector('.img-preview');
-          previewCell.innerHTML = `<img class="img-preview-thumb" src="/images/temp/${data.filename}">`;
+          previewCell.innerHTML = `<img class="img-preview-thumb" src="images/temp/${data.filename}">`;
           previewCell.querySelector('img').addEventListener('click', () => {
             previewCell.innerHTML = '';
             uploadBtn.style.display = 'inline-block';
