@@ -45,11 +45,15 @@ func classifyImage(cfg *Config, db *DB, imagePath string, schemaName string) {
 	attrsWithExamples := make(map[string][]string)
 	for _, attr := range schema.AttributeTitles {
 		var err error
-		attrsWithExamples[attr[0]], err = db.GetDistinctValuesTopK(schemaName, attr[0], 200)
+		attrsWithExamples[attr[0]], err = db.GetDistinctValuesTopK(schemaName, attr[0], 20)
 		if err != nil {
 			log.Printf("GetDistinctValuesTopK failed: %v", err)
 			return
 		}
+	}
+	var attrNames []string
+	for _, attr := range schema.AttributeTitles {
+		attrNames = append(attrNames, attr[0])
 	}
 
 	// Read image file
@@ -65,20 +69,22 @@ func classifyImage(cfg *Config, db *DB, imagePath string, schemaName string) {
 		log.Printf("Failed to marshal attributes/examples: %v", err)
 		return
 	}
-	prompt := fmt.Sprintf(`Du bist ein Klassifizierungshelfer. Analysiere das Bild und ordne die Attribute zu.
-
-Schema: %s
-Unterstützte Attribute: %s
-
-Verwende nur diese Attribute und gib JSON zurück im Format:
-{"attribute1": "wert1", "attribute2": "wert2"}
-
-Werte, die du nicht aus dem Bild ablesen kannst, weglassen.
-Falls nötig, neue Werte hinzufügen.
-Größenangaben nur, wenn du das Etikett lesen kannst.`,
+	prompt := fmt.Sprintf(`Perform a short and precise classification of the primary object (%s) in the attached image.
+Return a JSON object only.
+It must have exactly the following fields:
+%s
+Here are some examples:
+%s
+If any of the examples fits, return it verbatim.
+If none fits, come up with a new value in the style of the examples. Use only German for new values. Very precise 1-4 words for descriptions.
+Return exactly one string per field.
+If unsure (especially with size or other measured fields), assign null to the field.
+`,
 		schema.Title,
+		attrNames,
 		j,
 	)
+	log.Printf("prompt: %v\n\n", prompt)
 
 	// Encode image as base64 data URL
 	encoded := base64.StdEncoding.EncodeToString(data)
@@ -86,7 +92,12 @@ Größenangaben nur, wenn du das Etikett lesen kannst.`,
 
 	// Build JSON request body for OpenAI-compatible chat completions API
 	requestBody := map[string]interface{}{
-		"model": "llama-3.2-vision",
+		"model": "qwen-3.5-4B-MTP-GGUF",
+		"reasoning_control": true,
+		"stream": false,
+		"chat_template_kwargs": map[string]interface{}{
+			"enable_thinking": false,
+		},
 		"messages": []map[string]interface{}{
 			{
 				"role": "user",
@@ -113,7 +124,7 @@ Größenangaben nur, wenn du das Etikett lesen kannst.`,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+cfg.LLM.APIKey)
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: 300 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("LLM request failed: %v", err)
@@ -129,6 +140,7 @@ Größenangaben nur, wenn du das Etikett lesen kannst.`,
 
 	// Parse OpenAI chat completions response
 	body, _ := io.ReadAll(resp.Body)
+	log.Printf("\n\nllm body: \n%v\n\n", body)
 	var result map[string]string
 	var chatResp struct {
 		Choices []struct {
