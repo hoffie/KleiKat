@@ -398,8 +398,34 @@ async function renderTable(entries) {
       const file = imageInput.files[0];
       if (!file) return;
 
+      const img = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+
+      const MAX_WIDTH = 1024;
+      let width = img.width;
+      let height = img.height;
+      if (width > MAX_WIDTH) {
+        width = MAX_WIDTH;
+        height = Math.round(img.height * (MAX_WIDTH / img.width));
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(img.src);
+
+      const downscaledFile = await new Promise((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), file.type || 'image/jpeg', 0.92);
+      });
+
       const formData = new FormData();
-      formData.append('image', file);
+      formData.append('image', downscaledFile, file.name);
 
       try {
         const resp = await fetch(`${API}/schema/${state.schema}/upload-image`, {
