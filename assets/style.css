@@ -620,9 +620,16 @@ td:last-child button:hover {
   opacity: 0.6;
 }
 
+.hidden-by-default {
+  display: none;
+}
+
 .classify-btn:hover {
   background: #e8e0f0;
   opacity: 1;
+}
+tr[data-entry-id] .classify-btn {
+  visibility: hidden;
 }
 
 .classify-btn.active {
