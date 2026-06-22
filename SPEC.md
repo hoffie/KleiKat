@@ -24,6 +24,7 @@ Example:
       color: [Farbe, Farben]
       property: [Merkmal, Merkmale]
       location: [Ort, Orte]
+      is_in_location: [eingeräumt]
 ```
 
 

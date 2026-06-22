@@ -333,8 +333,12 @@ async function renderTable(entries) {
     bodyHTML += '<tr class="new-entry">';
     bodyHTML += '<td><div class="img-preview"></div><button class="upload-img-btn" title="Bild hochladen">&#128247;</button></td>';
     for (const attr of attrNames) {
-      const placeholder = attrs[attr][0] || attr;
-      bodyHTML += `<td><input type="text" class="entry-input" data-attr="${attr}" placeholder="${placeholder}"></td>`;
+      if (attr.startsWith('is_')) {
+        bodyHTML += `<td><input type="checkbox" class="bool-checkbox" data-attr="${attr}"></td>`;
+      } else {
+        const placeholder = attrs[attr][0] || attr;
+        bodyHTML += `<td><input type="text" class="entry-input" data-attr="${attr}" placeholder="${placeholder}"></td>`;
+      }
     }
     bodyHTML += '<td><button class="add-btn" title="Hinzufügen">&#10004;</button></td>';
     bodyHTML += '</tr>';
@@ -352,8 +356,13 @@ async function renderTable(entries) {
     }
     bodyHTML += `</td>`;
     for (const attr of attrNames) {
-      const val = entry.attrs[attr] || '';
-      bodyHTML += `<td><span class="cell-value">${escHTML(val)}</span></td>`;
+      if (attr.startsWith('is_')) {
+        const checked = entry.attrs[attr] ? 'checked' : '';
+        bodyHTML += `<td><input type="checkbox" class="bool-checkbox" data-entry-id="${entry.entry_id}" data-attr="${attr}" ${checked}></td>`;
+      } else {
+        const val = entry.attrs[attr] || '';
+        bodyHTML += `<td><span class="cell-value">${escHTML(val)}</span></td>`;
+      }
     }
     bodyHTML += '<td>';
     if (state.canWrite) {
@@ -372,8 +381,10 @@ async function renderTable(entries) {
   if (addBtn) {
     addBtn.addEventListener('click', async () => {
       const inputs = tbody.querySelectorAll('.new-entry .entry-input');
+      const checkboxes = tbody.querySelectorAll('.new-entry .bool-checkbox');
       const attrs = {};
       inputs.forEach(inp => { if (inp.value) attrs[inp.dataset.attr] = inp.value; });
+      checkboxes.forEach(cb => { if (cb.checked) attrs[cb.dataset.attr] = 'true'; });
       if (Object.keys(attrs).length === 0) return;
       if (newEntryRow && newEntryRow.dataset.image) {
         attrs['image'] = newEntryRow.dataset.image;
@@ -531,17 +542,28 @@ async function renderTable(entries) {
       classifyBtn.style.visibility = 'visible';
       const inputs = row.querySelectorAll('td:not(:last-child):not(:first-child)');
       inputs.forEach(td => {
-        const span = td.querySelector('.cell-value');
         const thIdx = Array.from(td.parentElement.children).indexOf(td);
         const attrName = attrNames[thIdx];
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'entry-input';
-        input.dataset.attr = attrName;
-        input.value = span.textContent;
-        span.replaceWith(input);
-        input.focus();
-        setupAutocomplete(input);
+        if (attrName.startsWith('is_')) {
+          const span = td.querySelector('.cell-value');
+          const checked = span.textContent === 'true';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.className = 'bool-checkbox entry-input';
+          cb.dataset.attr = attrName;
+          cb.checked = checked;
+          span.replaceWith(cb);
+        } else {
+          const span = td.querySelector('.cell-value');
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'entry-input';
+          input.dataset.attr = attrName;
+          input.value = span.textContent;
+          span.replaceWith(input);
+          input.focus();
+          setupAutocomplete(input);
+        }
       });
       // Replace edit/delete with save/cancel
       const actions = row.querySelector('td:last-child');
@@ -554,7 +576,7 @@ async function renderTable(entries) {
         const attrs2 = {};
         inputs2.forEach(inp => { if (inp.value) attrs2[inp.dataset.attr] = inp.value; });
         await api(`/schema/${state.schema}/${eid}`, {
-          method: 'PUT',
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ attrs: attrs2 }),
         });
@@ -577,6 +599,25 @@ async function renderTable(entries) {
       api(`/schema/${state.schema}/${eid}`, {
         method: 'DELETE',
       }).then(() => loadEntries());
+    });
+  });
+
+  // Attach boolean checkbox handlers
+  tbody.querySelectorAll('.bool-checkbox').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const eid = cb.dataset.entryId;
+      if (!eid) return;
+      const attr = cb.dataset.attr;
+      const val = cb.checked ? 'true' : 'false';
+      try {
+        await api(`/schema/${state.schema}/${eid}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attrs: { [attr]: val } }),
+        });
+      } catch (e) {
+        cb.checked = !cb.checked;
+      }
     });
   });
 

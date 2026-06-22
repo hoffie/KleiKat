@@ -345,6 +345,15 @@ td .cell-value {
   word-break: break-word;
 }
 
+td .bool-checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  margin: 0 auto;
+  display: block;
+  appearance: auto;
+}
+
 td:last-child {
   text-align: center;
   white-space: nowrap;

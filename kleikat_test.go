@@ -167,15 +167,15 @@ func TestDBAutocomplete(t *testing.T) {
 	}
 }
 
-func TestDBUpdateEntry(t *testing.T) {
+func TestDBPatchEntry(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer func() { db.Close(); os.RemoveAll(tmpDir) }()
 
 	db.AddEntry("clothing", "u1", map[string]string{"type": "Hemd", "color": "Blau"})
 
-	err := db.UpdateEntry("clothing", "u1", map[string]string{"color": "Rot", "size": "M"})
+	err := db.PatchEntry("clothing", "u1", map[string]string{"color": "Rot", "size": "M"})
 	if err != nil {
-		t.Fatalf("UpdateEntry failed: %v", err)
+		t.Fatalf("PatchEntry failed: %v", err)
 	}
 
 	entries, err := db.GetEntries("clothing", "", nil, nil)
@@ -191,8 +191,8 @@ func TestDBUpdateEntry(t *testing.T) {
 	if entries[0].Attrs["size"] != "M" {
 		t.Fatalf("expected size=M, got %s", entries[0].Attrs["size"])
 	}
-	if _, hasType := entries[0].Attrs["type"]; hasType {
-		t.Fatalf("expected type to be removed, but it exists")
+	if _, hasType := entries[0].Attrs["type"]; !hasType {
+		t.Fatalf("expected type to be there, but it got removed")
 	}
 }
 

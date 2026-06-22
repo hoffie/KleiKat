@@ -493,8 +493,8 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 				return
 			}
 
-			// PUT /api/schema/{name}/{entry_id} - update entry
-			if r.Method == http.MethodPut && len(parts) == 3 {
+			// PATCH /api/schema/{name}/{entry_id} - update entry
+			if r.Method == http.MethodPatch && len(parts) == 3 {
 				if err := activeDB.CheckWrite(); err != nil {
 					writeError(w, err.Error(), http.StatusForbidden)
 					return
@@ -506,7 +506,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 					writeError(w, "invalid json", http.StatusBadRequest)
 					return
 				}
-				if err := activeDB.UpdateEntry(schema, parts[2], body.Attrs); err != nil {
+				if err := activeDB.PatchEntry(schema, parts[2], body.Attrs); err != nil {
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
 				}

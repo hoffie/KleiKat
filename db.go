@@ -279,7 +279,7 @@ func (d *DB) AddEntry(schema, entryID string, attrs map[string]string) error {
 	return tx.Commit()
 }
 
-func (d *DB) UpdateEntry(schema, entryID string, attrs map[string]string) error {
+func (d *DB) PatchEntry(schema, entryID string, attrs map[string]string) error {
 	if err := d.CheckWrite(); err != nil {
 		return err
 	}
@@ -291,20 +291,26 @@ func (d *DB) UpdateEntry(schema, entryID string, attrs map[string]string) error 
 	defer tx.Rollback()
 	
 	// Delete existing attributes for this entry
-	_, err = tx.Exec(`DELETE FROM items WHERE schema = ? AND entry_id = ?`, schema, entryID)
+	delStmt, err := tx.Prepare(`DELETE FROM items WHERE schema = ? AND entry_id = ? AND attribute = ?`)
 	if err != nil {
 		return err
 	}
+	defer delStmt.Close()
 	
-	stmt, err := tx.Prepare(`INSERT INTO items (schema, entry_id, attribute, value) VALUES (?, ?, ?, ?)`)
+	addStmt, err := tx.Prepare(`INSERT INTO items (schema, entry_id, attribute, value) VALUES (?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer addStmt.Close()
 	
 	for attr, val := range attrs {
-		if val != "" {
-			_, err := stmt.Exec(schema, entryID, attr, val)
+		_, err := delStmt.Exec(schema, entryID, attr, val)
+		if err != nil {
+			return err
+		}
+		isBool := strings.HasPrefix(attr, "is_")
+		if (isBool && val == "true") || (!isBool && val != "") {
+			_, err := addStmt.Exec(schema, entryID, attr, val)
 			if err != nil {
 				return err
 			}
