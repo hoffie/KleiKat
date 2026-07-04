@@ -15,18 +15,22 @@ header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 20px;
   background: linear-gradient(135deg, #e0d4f5, #d4e8f5);
   border-bottom: 2px solid #c8b8e8;
 }
+header img,
+header span {
+  margin: 12px 0;
+}
 
 header img {
-  height: 36px;
-  width: 27px;
+  height: 25px;
+  width: 20px;
+  margin-left: 20px;
 }
 
 header span {
-  font-size: 1.4em;
+  font-size: 1.2em;
   font-weight: bold;
   color: #5a4a8a;
 }
@@ -35,7 +39,7 @@ header span {
   display: flex;
   gap: 4px;
   padding: 8px 20px 0 20px;
-  background: #ede8f8;
+  margin-top: auto;
   border-bottom: 1px solid #d8c8e8;
   overflow-x: auto;
 }
