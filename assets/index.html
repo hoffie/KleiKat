@@ -703,9 +703,8 @@ async function renderTable(entries) {
     dropdown.style.width = Math.max(rect.width, 200) + 'px';
     dropdown.style.display = 'block';
 
-    // Focus search input
     const searchInput = dropdown.querySelector('.filter-search');
-    if (searchInput) searchInput.focus();
+    // Don't focus search input as it auto-opens virtual keyboards
 
     // Search filtering
     searchInput.addEventListener('input', () => {
