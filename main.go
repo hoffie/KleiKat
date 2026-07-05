@@ -407,6 +407,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 		if readOnly {
 			dbRO, err := OpenDB(DB_FILENAME, true)
 			if err != nil {
+				log.Printf("db error: %v", err.Error())
 				writeError(w, "db error", http.StatusInternalServerError)
 				return
 			}
@@ -431,6 +432,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 				}
 				entries, err := activeDB.GetEntries(schema, search, filters, cfg.Schemas[schema].Sort)
 				if err != nil {
+					log.Printf("GET /api/schema/%s: 500: %v", schema, err.Error())
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -442,6 +444,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 			if r.Method == http.MethodGet && len(parts) == 3 && parts[2] == "distincts" {
 				vals, err := activeDB.GetDistinctValues(schema)
 				if err != nil {
+					log.Printf("GET /api/schema/%s/distincts: 500: %v", schema, err.Error())
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -455,6 +458,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 				fragment := r.URL.Query().Get("fragment")
 				vals, err := activeDB.GetAutocomplete(schema, attr, fragment)
 				if err != nil {
+					log.Printf("GET /api/schema/%s/autocomplete: 500: attr=%v, fragment=%v, vals=%v, %v", schema,  attr, fragment, vals, err.Error())
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -486,6 +490,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 				}
 
 				if err := activeDB.AddEntry(schema, body.EntryID, body.Attrs); err != nil {
+					log.Printf("POST /api/schema: 500: %v", schema, err.Error())
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -507,6 +512,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 					return
 				}
 				if err := activeDB.PatchEntry(schema, parts[2], body.Attrs); err != nil {
+					log.Printf("PATCH /api/schema/%s/%s: 500: %v", schema, parts[2], err.Error())
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -526,6 +532,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 				go deleteEntryImages(entryID)
 
 				if err := activeDB.DeleteEntry(schema, entryID); err != nil {
+					log.Printf("DELETE /api/schema/%s/%s: 500: %v", schema, entryID, err.Error())
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -722,6 +729,7 @@ func deleteEntryImages(entryID string) {
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	data, err := json.Marshal(v)
 	if err != nil {
+		log.Printf("writeJSON: marshal failed: %v", err.Error())
 		http.Error(w, `{"error":"marshal failed"}`, http.StatusInternalServerError)
 		return
 	}
