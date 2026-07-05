@@ -162,6 +162,11 @@ func (d *DB) GetEntries(schema, search string, filters map[string][]string, sort
 			for _, attr := range sortOrder {
 				valI := entries[i].Attrs[attr]
 				valJ := entries[j].Attrs[attr]
+				valIi := extractNumericPrefix(valI)
+				valJi := extractNumericPrefix(valJ)
+				if valIi != valJi {
+					return valIi < valJi
+				}
 				if valI != valJ {
 					return valI < valJ
 				}
@@ -171,6 +176,23 @@ func (d *DB) GetEntries(schema, search string, filters map[string][]string, sort
 	}
 
 	return entries, nil
+}
+
+func extractNumericPrefix(input string) int {
+	var prefix int64
+
+	for _, c := range input {
+		if !isDigit(c) {
+			break
+		}
+		prefix = int64(c) + (prefix * 10)
+	}
+
+	return int(prefix)
+}
+
+func isDigit(c rune) bool {
+	return '0' <= c && c <= '9'
 }
 
 func (d *DB) GetDistinctValues(schema string) (map[string][]string, error) {
