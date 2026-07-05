@@ -539,20 +539,21 @@ async function renderTable(entries) {
       const firstCell = row.querySelector('td:first-child');
       const imgFile = firstCell.querySelector('.thumbnail')?.dataset?.filename;
       let classifyBtn = firstCell.querySelector('.classify-btn');
-      classifyBtn.style.visibility = 'visible';
+      if (classifyBtn) {
+        classifyBtn.style.visibility = 'visible';
+      }
       const inputs = row.querySelectorAll('td:not(:last-child):not(:first-child)');
       inputs.forEach(td => {
-        const thIdx = Array.from(td.parentElement.children).indexOf(td);
+        const thIdx = Array.from(td.parentElement.children).indexOf(td) - 1;
         const attrName = attrNames[thIdx];
         if (attrName.startsWith('is_')) {
-          const span = td.querySelector('.cell-value');
-          const checked = span.textContent === 'true';
+          const checkbox = td.querySelector('input[type=checkbox]');
           const cb = document.createElement('input');
           cb.type = 'checkbox';
           cb.className = 'bool-checkbox entry-input';
           cb.dataset.attr = attrName;
-          cb.checked = checked;
-          span.replaceWith(cb);
+          cb.checked = checkbox.checked;
+          checkbox.replaceWith(cb);
         } else {
           const span = td.querySelector('.cell-value');
           const input = document.createElement('input');
