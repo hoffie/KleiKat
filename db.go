@@ -10,7 +10,7 @@ import (
 )
 
 type DB struct {
-	db *sql.DB
+	db       *sql.DB
 	readonly bool
 }
 
@@ -19,7 +19,7 @@ func OpenDB(path string, readonly bool) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// For readonly mode, we still need to create tables if they don't exist
 	// but we'll handle write rejection at the API level
 	db := &DB{db: d, readonly: readonly}
@@ -78,7 +78,7 @@ func (d *DB) GetSchemas() ([]string, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var schemas []string
 	for rows.Next() {
 		var s string
@@ -97,7 +97,7 @@ func (d *DB) GetEntries(schema, search string, filters map[string][]string, sort
 		WHERE schema = ?
 	`
 	args := []interface{}{schema}
-	
+
 	// Handle search
 	if search != "" {
 		query += ` AND entry_id IN (
@@ -106,7 +106,7 @@ func (d *DB) GetEntries(schema, search string, filters map[string][]string, sort
 		)`
 		args = append(args, schema, "%"+search+"%")
 	}
-	
+
 	// Handle filters
 	for attr, vals := range filters {
 		if len(vals) > 0 {
@@ -123,23 +123,23 @@ func (d *DB) GetEntries(schema, search string, filters map[string][]string, sort
 			}
 		}
 	}
-	
+
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	// Group by entry_id
 	entriesMap := make(map[string]*Entry)
 	var entryOrder []string
-	
+
 	for rows.Next() {
 		var s, eid, attr, val string
 		if err := rows.Scan(&s, &eid, &attr, &val); err != nil {
 			return nil, err
 		}
-		
+
 		if _, ok := entriesMap[eid]; !ok {
 			entriesMap[eid] = &Entry{
 				Schema:  s,
@@ -150,12 +150,12 @@ func (d *DB) GetEntries(schema, search string, filters map[string][]string, sort
 		}
 		entriesMap[eid].Attrs[attr] = val
 	}
-	
+
 	entries := make([]Entry, 0, len(entryOrder))
 	for _, eid := range entryOrder {
 		entries = append(entries, *entriesMap[eid])
 	}
-	
+
 	// Sort entries based on sortOrder
 	if len(sortOrder) > 0 {
 		sort.SliceStable(entries, func(i, j int) bool {
@@ -169,7 +169,7 @@ func (d *DB) GetEntries(schema, search string, filters map[string][]string, sort
 			return false
 		})
 	}
-	
+
 	return entries, nil
 }
 
@@ -185,7 +185,7 @@ func (d *DB) GetDistinctValues(schema string) (map[string][]string, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	// initialize as slice with length 0 to ensure proper
 	// JSON marshalling:
 	values := make(map[string][]string, 0)
@@ -238,7 +238,7 @@ func (d *DB) GetAutocomplete(schema, attribute, fragment string) ([]string, erro
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var values []string
 	for rows.Next() {
 		var v string
@@ -254,19 +254,19 @@ func (d *DB) AddEntry(schema, entryID string, attrs map[string]string) error {
 	if err := d.CheckWrite(); err != nil {
 		return err
 	}
-	
+
 	tx, err := d.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	
+
 	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO items (schema, entry_id, attribute, value) VALUES (?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
-	
+
 	for attr, val := range attrs {
 		if val != "" {
 			_, err := stmt.Exec(schema, entryID, attr, val)
@@ -275,7 +275,7 @@ func (d *DB) AddEntry(schema, entryID string, attrs map[string]string) error {
 			}
 		}
 	}
-	
+
 	return tx.Commit()
 }
 
@@ -283,26 +283,26 @@ func (d *DB) PatchEntry(schema, entryID string, attrs map[string]string) error {
 	if err := d.CheckWrite(); err != nil {
 		return err
 	}
-	
+
 	tx, err := d.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	
+
 	// Delete existing attributes for this entry
 	delStmt, err := tx.Prepare(`DELETE FROM items WHERE schema = ? AND entry_id = ? AND attribute = ?`)
 	if err != nil {
 		return err
 	}
 	defer delStmt.Close()
-	
+
 	addStmt, err := tx.Prepare(`INSERT INTO items (schema, entry_id, attribute, value) VALUES (?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer addStmt.Close()
-	
+
 	for attr, val := range attrs {
 		_, err := delStmt.Exec(schema, entryID, attr, val)
 		if err != nil {
@@ -316,7 +316,7 @@ func (d *DB) PatchEntry(schema, entryID string, attrs map[string]string) error {
 			}
 		}
 	}
-	
+
 	return tx.Commit()
 }
 
@@ -324,7 +324,7 @@ func (d *DB) DeleteEntry(schema, entryID string) error {
 	if err := d.CheckWrite(); err != nil {
 		return err
 	}
-	
+
 	_, err := d.db.Exec(`DELETE FROM items WHERE schema = ? AND entry_id = ?`, schema, entryID)
 	return err
 }
@@ -333,31 +333,31 @@ func (d *DB) StoreSuggestions(filename string, suggestions map[string]string) er
 	if err := d.CheckWrite(); err != nil {
 		return err
 	}
-	
+
 	tx, err := d.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	
+
 	_, err = tx.Exec(`DELETE FROM image_attribute_suggestions WHERE filename = ?`, filename)
 	if err != nil {
 		return err
 	}
-	
+
 	stmt, err := tx.Prepare(`INSERT INTO image_attribute_suggestions (filename, attribute, value) VALUES (?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
-	
+
 	for attr, val := range suggestions {
 		_, err := stmt.Exec(filename, attr, val)
 		if err != nil {
 			return err
 		}
 	}
-	
+
 	return tx.Commit()
 }
 
@@ -370,7 +370,7 @@ func (d *DB) GetSuggestions(filename string) (map[string]string, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	suggestions := make(map[string]string)
 	for rows.Next() {
 		var attr, val string
@@ -379,7 +379,7 @@ func (d *DB) GetSuggestions(filename string) (map[string]string, error) {
 		}
 		suggestions[attr] = val
 	}
-	
+
 	return suggestions, nil
 }
 

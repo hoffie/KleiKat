@@ -92,9 +92,9 @@ If unsure (especially with size or other measured fields), assign null to the fi
 
 	// Build JSON request body for OpenAI-compatible chat completions API
 	requestBody := map[string]interface{}{
-		"model": "qwen-3.5-4B-MTP-GGUF",
+		"model":             "qwen-3.5-4B-MTP-GGUF",
 		"reasoning_control": true,
-		"stream": false,
+		"stream":            false,
 		"chat_template_kwargs": map[string]interface{}{
 			"enable_thinking": false,
 		},
@@ -407,7 +407,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 		if readOnly {
 			dbRO, err := OpenDB(DB_FILENAME, true)
 			if err != nil {
-				log.Printf("db error: %v", err.Error())
+				log.Printf("read only db error: %v", err.Error())
 				writeError(w, "db error", http.StatusInternalServerError)
 				return
 			}
@@ -458,7 +458,7 @@ func handleAPI(db *DB, cfg *Config) http.HandlerFunc {
 				fragment := r.URL.Query().Get("fragment")
 				vals, err := activeDB.GetAutocomplete(schema, attr, fragment)
 				if err != nil {
-					log.Printf("GET /api/schema/%s/autocomplete: 500: attr=%v, fragment=%v, vals=%v, %v", schema,  attr, fragment, vals, err.Error())
+					log.Printf("GET /api/schema/%s/autocomplete: 500: attr=%v, fragment=%v, vals=%v, %v", schema, attr, fragment, vals, err.Error())
 					writeError(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
