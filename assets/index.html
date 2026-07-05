@@ -303,8 +303,8 @@ async function renderTable(entries) {
   table.id = 'table';
   table.innerHTML = `
     <thead id="table-head"></thead>
-    <tbody id="table-body"></tbody>`;
-
+    <tbody id="table-body"></tbody>
+    <tfoot id="table-foot"></tfoot>`;
 
   // Header
   const thead = table.querySelector('#table-head');
@@ -374,6 +374,10 @@ async function renderTable(entries) {
   }
 
   tbody.innerHTML = bodyHTML;
+
+  const tfoot = table.querySelector('#table-foot');
+  const colspan = thead.querySelectorAll('tr:first-child th').length;
+  tfoot.innerHTML = `<tr><th colspan="${colspan}">${entries.length} ${entries.length == 1 ? "Eintrag" : "Einträge" } in dieser Ansicht.</th></tr>`;
 
   // Attach new entry save
   const addBtn = tbody.querySelector('.add-btn');
