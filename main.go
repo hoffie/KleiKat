@@ -282,7 +282,7 @@ func runImport(args []string) {
 		log.Fatalf("Unknown schema: %s", *schema)
 	}
 
-	db, err := OpenDB("kleikat.db", false)
+	db, err := OpenDB(DB_FILENAME, false)
 	if err != nil {
 		log.Fatalf("Open DB: %v", err)
 	}
