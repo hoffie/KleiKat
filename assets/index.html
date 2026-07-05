@@ -572,7 +572,8 @@ async function renderTable(entries) {
         <button class="save-btn" title="Speichern">&#10004;</button>
         <button class="cancel-btn" title="Abbrechen">&#10005;</button>
       `;
-      actions.querySelector('.save-btn').addEventListener('click', async () => {
+      actions.querySelector('.save-btn').addEventListener('click', async (e) => {
+        e.preventDefault();
         const inputs2 = row.querySelectorAll('.entry-input');
         const attrs2 = {};
         inputs2.forEach(inp => { if (inp.value) attrs2[inp.dataset.attr] = inp.value; });
