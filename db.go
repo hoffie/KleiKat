@@ -15,7 +15,7 @@ type DB struct {
 }
 
 func OpenDB(path string, readonly bool) (*DB, error) {
-	d, err := sql.Open("sqlite", path+"?_busy_timeout=1000")
+	d, err := sql.Open("sqlite", "file:"+path+"?_busy_timeout=1000&_pragma=journal_mode=WAL&_pragma=busy_timeout=5000")
 	if err != nil {
 		return nil, err
 	}
