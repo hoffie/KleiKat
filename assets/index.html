@@ -661,18 +661,6 @@ async function renderTable(entries) {
     });
   });
 
-  function applyFilterSelection(attr, dropdown) {
-    const checked = dropdown.querySelectorAll('.filter-options input[type="checkbox"]:checked');
-    const values = Array.from(checked).map(cb => cb.value);
-    if (values.length === 0) {
-      delete state.filters[attr];
-    } else {
-      state.filters[attr] = values.join(FILTER_SEP);
-    }
-    updateURL();
-    loadEntries();
-  }
-
   function openFilterDropdown(attr, distincts, headerEl) {
     // Close any open dropdown
     closeFilterDropdown();
@@ -721,10 +709,31 @@ async function renderTable(entries) {
       });
     });
 
+    function applyFilterSelection(attr, dropdown) {
+      const checked = dropdown.querySelectorAll('.filter-options input[type="checkbox"]:checked');
+      const values = Array.from(checked).map(cb => cb.value);
+      if (values.length === 0) {
+        delete state.filters[attr];
+      } else {
+        state.filters[attr] = values.join(FILTER_SEP);
+      }
+      updateURL();
+      loadEntries();
+      closeFilterDropdown();
+    }
+
+    function closeFilterDropdown() {
+      const dropdown = document.getElementById('filter-dropdown');
+      if (dropdown) {
+        dropdown.style.display = 'none';
+      }
+      document.removeEventListener('click', dropdownDocumentClickHandler);
+      document.removeEventListener('keydown', dropdownEscHandler);
+    }
+
     // Close button - auto-apply before closing
     dropdown.querySelector('.filter-dropdown-close').addEventListener('click', () => {
       applyFilterSelection(attr, dropdown);
-      closeFilterDropdown();
     });
 
     // Clear button
@@ -735,39 +744,29 @@ async function renderTable(entries) {
       closeFilterDropdown();
     });
 
+    // Click outside to close - auto-apply
+    function dropdownDocumentClickHandler(e) {
+      if (dropdown.style.display !== 'block') return;
+      if (e.target.closest('.filter-header')) return;
+      if (!dropdown.contains(e.target) && e.target !== headerEl && !headerEl.contains(e.target)) {
+        applyFilterSelection(attr, dropdown);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('click', dropdownDocumentClickHandler);
+    }, 0);
     // Apply button
     dropdown.querySelector('.filter-apply').addEventListener('click', () => {
       applyFilterSelection(attr, dropdown);
-      closeFilterDropdown();
     });
-
-    // Click outside to close - auto-apply
-    setTimeout(() => {
-      document.addEventListener('click', function handler(e) {
-        if (e.target.closest('.filter-header')) return;
-        if (!dropdown.contains(e.target) && e.target !== headerEl && !headerEl.contains(e.target)) {
-          applyFilterSelection(attr, dropdown);
-          closeFilterDropdown();
-          document.removeEventListener('click', handler);
-        }
-      });
-    }, 0);
 
     // Escape key to close - auto-apply
-    document.addEventListener('keydown', function escHandler(e) {
+    function dropdownEscHandler(e) {
       if (e.key === 'Escape' && dropdown.style.display === 'block') {
         applyFilterSelection(attr, dropdown);
-        closeFilterDropdown();
-        document.removeEventListener('keydown', escHandler);
       }
-    });
-  }
-
-  function closeFilterDropdown() {
-    const dropdown = document.getElementById('filter-dropdown');
-    if (dropdown) {
-      dropdown.style.display = 'none';
     }
+    document.addEventListener('keydown', dropdownEscHandler);
   }
 
   // Autocomplete for new entry inputs
