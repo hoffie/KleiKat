@@ -151,6 +151,8 @@ th {
   color: #5a4a8a;
   position: sticky;
   top: 0;
+}
+thead th {
   z-index: 1000;
 }
 
