@@ -199,7 +199,7 @@ func (d *DB) GetDistinctValues(schema string) (map[string][]string, error) {
 	rows, err := d.db.Query(
 		`SELECT attribute, value FROM items
 		 WHERE schema = ?
-		 GROUP BY value
+		 GROUP BY attribute, value
 		 ORDER BY CAST(value AS INTEGER), value`,
 		schema,
 	)
