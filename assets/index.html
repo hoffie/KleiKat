@@ -557,6 +557,7 @@ async function renderTable(entries) {
           cb.className = 'bool-checkbox entry-input';
           cb.dataset.attr = attrName;
           cb.checked = checkbox.checked;
+          cb.value = 'true';
           checkbox.replaceWith(cb);
         } else {
           const span = td.querySelector('.cell-value');
