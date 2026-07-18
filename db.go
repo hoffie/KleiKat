@@ -200,7 +200,7 @@ func (d *DB) GetDistinctValues(schema string) (map[string][]string, error) {
 		`SELECT attribute, value FROM items
 		 WHERE schema = ?
 		 GROUP BY attribute, value
-		 ORDER BY CAST(value AS INTEGER), value`,
+		 ORDER BY CAST(value AS INTEGER), LOWER(value)`,
 		schema,
 	)
 	if err != nil {
