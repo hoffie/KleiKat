@@ -334,7 +334,7 @@ async function renderTable(entries) {
     bodyHTML += '<td><div class="img-preview"></div><button class="upload-img-btn" title="Bild hochladen">&#128247;</button></td>';
     for (const attr of attrNames) {
       if (attr.startsWith('is_')) {
-        bodyHTML += `<td><input type="checkbox" class="bool-checkbox" data-attr="${attr}"></td>`;
+        bodyHTML += `<td><input type="checkbox" class="bool-checkbox" data-attr="${attr}" value="true"></td>`;
       } else {
         const placeholder = attrs[attr][0] || attr;
         bodyHTML += `<td><input type="text" class="entry-input" data-attr="${attr}" placeholder="${placeholder}"></td>`;
