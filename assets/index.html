@@ -849,8 +849,8 @@ async function renderTable(entries) {
           highlightedIndex = Math.max(highlightedIndex - 1, 0);
           updateHighlight();
         } else if (e.key === 'Enter' || e.key === 'Tab') {
-          e.preventDefault();
           if (highlightedIndex >= 0 && highlightedIndex < activeSuggestions.length) {
+            e.preventDefault();
             input.value = activeSuggestions[highlightedIndex];
           }
           autocompleteEl.style.display = 'none';
