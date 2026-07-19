@@ -153,7 +153,7 @@ th {
   top: 0;
 }
 thead th {
-  z-index: 1000;
+  z-index: 400;
 }
 
 .filter-select {
@@ -389,7 +389,7 @@ td:last-child button:hover {
   box-shadow: 0 2px 8px rgba(100, 80, 140, 0.15);
   max-height: 200px;
   overflow-y: auto;
-  z-index: 100;
+  z-index: 500;
   min-width: 150px;
 }
 
