@@ -38,6 +38,7 @@ func (d *DB) initSchema() error {
 			entry_id TEXT NOT NULL,
 			attribute TEXT NOT NULL,
 			value TEXT NOT NULL,
+			last_modified TEXT NOT NULL DEFAULT (datetime('now')),
 			UNIQUE(entry_id, attribute)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_schema ON items (schema)`,
@@ -283,7 +284,7 @@ func (d *DB) AddEntry(schema, entryID string, attrs map[string]string) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO items (schema, entry_id, attribute, value) VALUES (?, ?, ?, ?)`)
+	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO items (schema, entry_id, attribute, value, last_modified) VALUES (?, ?, ?, ?, datetime('now'))`)
 	if err != nil {
 		return err
 	}
@@ -337,6 +338,12 @@ func (d *DB) PatchEntry(schema, entryID string, attrs map[string]string) error {
 				return err
 			}
 		}
+	}
+
+	// Update last_modified timestamp for the entry
+	_, err = tx.Exec("UPDATE items SET last_modified = datetime('now') WHERE schema = ? AND entry_id = ?", schema, entryID)
+	if err != nil {
+		return err
 	}
 
 	return tx.Commit()
