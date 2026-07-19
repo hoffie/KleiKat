@@ -581,7 +581,7 @@ async function renderTable(entries) {
         e.preventDefault();
         const inputs2 = row.querySelectorAll('.entry-input');
         const attrs2 = {};
-        inputs2.forEach(inp => { if (inp.value) attrs2[inp.dataset.attr] = inp.value; });
+        inputs2.forEach(inp => { attrs2[inp.dataset.attr] = inp.value; });
         await api(`/schema/${state.schema}/${eid}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
