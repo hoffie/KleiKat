@@ -375,6 +375,16 @@ async function renderTable(entries) {
 
   tbody.innerHTML = bodyHTML;
 
+  tbody.querySelectorAll('tr').forEach((row) => {
+      row.addEventListener('dblclick', (e) => {
+        console.log(e);
+        const editBtn = e.target.closest('tr').querySelector('.edit-btn');
+        if (editBtn) {
+          editBtn.click();
+        }
+      });
+  });
+
   const tfoot = table.querySelector('#table-foot');
   const colspan = thead.querySelectorAll('tr:first-child th').length;
   tfoot.innerHTML = `<tr><th colspan="${colspan}">${entries.length} ${entries.length == 1 ? "Eintrag" : "Einträge" } in dieser Ansicht.</th></tr>`;
